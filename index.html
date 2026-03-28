@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Zenkari Converter v3.0 — Web</title>
+<title>Zenkari Converter v3.1 — Web</title>
 
 <!-- ═══════════ LIBRAIRIES JS (CDN) ═══════════
   pdf-lib      → créer/manipuler PDF
@@ -11,13 +11,14 @@
   mammoth      → DOCX → HTML/Text
   JSZip        → ZIP/archives
   FileSaver    → téléchargement
-  @ffmpeg/core → vidéo/audio (WebAssembly)
+  FFmpeg.wasm  → vidéo/audio (WebAssembly, réel ffmpeg)
 ══════════════════════════════════════════════ -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.6/dist/umd/ffmpeg.js"></script>
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;600;700;800&display=swap');
@@ -168,7 +169,7 @@ select:focus{border-color:var(--accent)}
       <div class="logo-hex"></div>
       <div>
         <div># ZENKARI</div>
-        <div class="logo-sub">CONVERTER v3.0 — WEB EDITION</div>
+        <div class="logo-sub">CONVERTER v3.1 — WEB EDITION</div>
       </div>
     </div>
     <div class="lang-wrap">
@@ -255,7 +256,7 @@ select:focus{border-color:var(--accent)}
 
   <div id="statusbar">
     <span id="status-txt">Prêt.</span>
-    <span id="status-right">Zenkari Labs © 2025 · v3.0 Web</span>
+    <span id="status-right">Zenkari Labs © 2025 · v3.1 Web</span>
   </div>
 </div>
 <div id="toasts"></div>
@@ -675,38 +676,114 @@ async function convConfig(file,de){
   throw new Error(`Config → .${de} non supporté`);
 }
 
-// ── 14. AUDIO via Web Audio API (WAV → autres formats) ───────
-async function convAudioWebAPI(file,de){
-  const ab=await readBuf(file);
-  const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
-  let decoded;
-  try{decoded=await audioCtx.decodeAudioData(ab.slice(0));}
-  catch(e){throw new Error(`Décodage audio échoué: ${e.message}. Pour la conversion audio complète, utilisez la version Python.`);}
-  if(de==='wav'){
-    // Encode to WAV
-    const sr=decoded.sampleRate,nc=decoded.numberOfChannels,ns=decoded.length;
-    const buf=new ArrayBuffer(44+ns*nc*2),view=new DataView(buf);
-    const writeStr=(o,s)=>{for(let i=0;i<s.length;i++)view.setUint8(o+i,s.charCodeAt(i));};
-    writeStr(0,'RIFF');view.setUint32(4,36+ns*nc*2,true);writeStr(8,'WAVE');
-    writeStr(12,'fmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);
-    view.setUint16(22,nc,true);view.setUint32(24,sr,true);
-    view.setUint32(28,sr*nc*2,true);view.setUint16(32,nc*2,true);view.setUint16(34,16,true);
-    writeStr(36,'data');view.setUint32(40,ns*nc*2,true);
-    let offset=44;
-    for(let i=0;i<ns;i++)for(let c=0;c<nc;c++){
-      const s=Math.max(-1,Math.min(1,decoded.getChannelData(c)[i]));
-      view.setInt16(offset,s<0?s*0x8000:s*0x7FFF,true);offset+=2;
-    }
-    await audioCtx.close();
-    return new Blob([buf],{type:'audio/wav'});
+// ── 14 & 15. FFMPEG.WASM — Vidéo + Audio complets ───────────
+let _ffmpeg = null;
+let _ffmpegLoading = false;
+let _ffmpegReady = false;
+
+async function getFFmpeg(onProgress) {
+  if (_ffmpegReady) return _ffmpeg;
+  if (_ffmpegLoading) {
+    // Wait for it to finish loading
+    while (_ffmpegLoading) await new Promise(r => setTimeout(r, 200));
+    return _ffmpeg;
   }
-  await audioCtx.close();
-  throw new Error(`Conversion vers .${de} nécessite la version Python (ffmpeg). WAV natif disponible.`);
+  _ffmpegLoading = true;
+  try {
+    if (typeof FFmpeg === 'undefined' || !FFmpeg.FFmpeg) {
+      throw new Error('FFmpeg.wasm non chargé. Vérifiez votre connexion internet.');
+    }
+    _ffmpeg = new FFmpeg.FFmpeg();
+    _ffmpeg.on('log', ({message}) => {
+      // Parse progress from ffmpeg output
+      const m = message.match(/time=(\d+):(\d+):(\d+)/);
+      if (m && onProgress) onProgress(null, `ffmpeg: ${message.slice(0,60)}`);
+    });
+    _ffmpeg.on('progress', ({progress}) => {
+      if (onProgress) onProgress(Math.round(progress * 90) + 5, `ffmpeg: ${Math.round(progress*100)}%`);
+    });
+    log('Chargement FFmpeg.wasm (première fois ~20MB)…', 'warn');
+    await _ffmpeg.load({
+      coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js',
+      wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm',
+    });
+    _ffmpegReady = true;
+    log('FFmpeg.wasm chargé ✓', 'ok');
+  } catch(e) {
+    _ffmpegLoading = false;
+    throw new Error('FFmpeg.wasm : ' + e.message);
+  }
+  _ffmpegLoading = false;
+  return _ffmpeg;
 }
 
-// ── 15. VIDEO — info message ─────────────────────────────────
-function videoNotSupported(se,de){
-  throw new Error(`Conversion vidéo .${se} → .${de} nécessite la version Python+ffmpeg. Le navigateur ne peut pas encoder H264/H265.`);
+// Mime types pour les formats
+const MEDIA_MIME = {
+  mp4:'video/mp4', webm:'video/webm', avi:'video/x-msvideo',
+  mkv:'video/x-matroska', mov:'video/quicktime', flv:'video/x-flv',
+  wmv:'video/x-ms-wmv', '3gp':'video/3gpp', mpeg:'video/mpeg', mpg:'video/mpeg',
+  mp3:'audio/mpeg', wav:'audio/wav', ogg:'audio/ogg', flac:'audio/flac',
+  aac:'audio/aac', m4a:'audio/mp4', opus:'audio/opus', wma:'audio/x-ms-wma',
+  aiff:'audio/aiff',
+};
+
+async function convMediaFFmpeg(file, de, cb) {
+  const se = (file.name.split('.').pop()||'').toLowerCase();
+  const stem = file.name.replace(/\.[^.]+$/, '');
+  const outName = stem + '.' + de;
+  const inName = 'input.' + se;
+  const outFfName = 'output.' + de;
+
+  const ff = await getFFmpeg(cb);
+  if (cb) cb(5, 'Lecture du fichier…');
+
+  // Write input
+  const ab = await readBuf(file);
+  await ff.writeFile(inName, new Uint8Array(ab));
+
+  if (cb) cb(10, 'Conversion ffmpeg…');
+
+  // Build ffmpeg args
+  const args = ['-i', inName];
+
+  // Audio extraction from video
+  const vidExts = ['mp4','webm','avi','mkv','mov','flv','wmv','3gp','mpeg','mpg'];
+  const audExts = ['mp3','wav','ogg','flac','aac','m4a','opus','wma','aiff'];
+  if (vidExts.includes(se) && audExts.includes(de)) {
+    args.push('-vn'); // no video
+  }
+
+  // Codec/quality settings
+  if (de === 'mp3')  args.push('-codec:a', 'libmp3lame', '-q:a', '2');
+  else if (de === 'aac')  args.push('-codec:a', 'aac', '-b:a', '192k');
+  else if (de === 'ogg')  args.push('-codec:a', 'libvorbis', '-q:a', '4');
+  else if (de === 'opus') args.push('-codec:a', 'libopus', '-b:a', '128k');
+  else if (de === 'flac') args.push('-codec:a', 'flac');
+  else if (de === 'wav')  args.push('-codec:a', 'pcm_s16le');
+  else if (de === 'mp4')  args.push('-codec:v', 'libx264', '-preset', 'fast', '-crf', '23', '-codec:a', 'aac');
+  else if (de === 'webm') args.push('-codec:v', 'libvpx-vp9', '-crf', '30', '-b:v', '0', '-codec:a', 'libopus');
+  else if (de === 'gif')  args.push('-vf', 'fps=10,scale=480:-1:flags=lanczos', '-loop', '0');
+  else if (de === 'avi')  args.push('-codec:v', 'libx264', '-codec:a', 'mp3');
+  else if (de === 'mov')  args.push('-codec:v', 'libx264', '-codec:a', 'aac');
+
+  args.push('-y', outFfName);
+
+  try {
+    await ff.exec(args);
+  } catch(e) {
+    throw new Error(`ffmpeg.wasm: ${e.message}`);
+  }
+
+  if (cb) cb(95, 'Lecture résultat…');
+  const data = await ff.readFile(outFfName);
+
+  // Cleanup
+  try { await ff.deleteFile(inName); } catch(e) {}
+  try { await ff.deleteFile(outFfName); } catch(e) {}
+
+  const mime = MEDIA_MIME[de] || 'application/octet-stream';
+  if (cb) cb(100, 'Done ✓');
+  return { blob: new Blob([data.buffer], {type: mime}), name: outName };
 }
 
 // ── MAIN DISPATCHER ──────────────────────────────────────────
@@ -739,12 +816,9 @@ async function convertFile(file,dstExt){
     return{blob,name:outName};
   }
 
-  // VIDEO
-  if(vidExts.includes(se)||vidExts.includes(de))videoNotSupported(se,de);
-
-  // AUDIO
-  if(audExts.includes(se)||audExts.includes(de)){
-    blob=await convAudioWebAPI(file,de);return{blob,name:outName};
+  // VIDEO + AUDIO via FFmpeg.wasm
+  if(vidExts.includes(se)||audExts.includes(se)||vidExts.includes(de)||audExts.includes(de)){
+    return await convMediaFFmpeg(file, de, cb);
   }
 
   // DOCX / DOC
@@ -869,7 +943,7 @@ async function init(){
   document.getElementById('loading').classList.add('hidden');
   buildGrid();renderFiles();
   log('Zenkari Converter v3.0 Web — Prêt 🚀','info');
-  log('Librairies : pdf-lib ✓  xlsx ✓  mammoth ✓  JSZip ✓  FileSaver ✓','info');
+  log('Librairies : pdf-lib ✓  xlsx ✓  mammoth ✓  JSZip ✓  FileSaver ✓  FFmpeg.wasm (à la demande)','info');
   if(typeof PDFLib==='undefined')log('⚠ pdf-lib non chargé — PDF désactivé','warn');
   if(typeof XLSX==='undefined')log('⚠ xlsx non chargé — Excel désactivé','warn');
   if(typeof mammoth==='undefined')log('⚠ mammoth non chargé — DOCX désactivé','warn');
