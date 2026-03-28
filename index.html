@@ -1,1776 +1,1087 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Zenkari Converter v3.2 — Web</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;600;700;800&display=swap');
-:root{
-  --bg:#080b12;--surface:#0d1117;--panel:#111827;--panel2:#161f2e;
-  --border:#1e2d40;--border2:#243447;
-  --accent:#00d4ff;--a2:#7c3aed;--a3:#06ffa5;
-  --vid:#ff6b35;--aud:#a855f7;--doc:#3b82f6;--dat:#10b981;
-  --arc:#f59e0b;--cod:#ec4899;--sub:#fbbf24;--img:#00d4ff;
-  --err:#ef4444;--warn:#f97316;--text:#e2e8f0;--muted:#64748b;--dim:#334155;
-  --r:8px;
-}
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;font-size:14px;overflow:hidden}
-::-webkit-scrollbar{width:5px;height:5px}
-::-webkit-scrollbar-track{background:var(--surface)}
-::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
-::-webkit-scrollbar-thumb:hover{background:var(--accent)}
-canvas{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.28}
-#app{position:relative;z-index:1;display:flex;flex-direction:column;height:100vh;overflow:hidden}
-
-/* TOPBAR */
-#topbar{display:flex;align-items:center;background:var(--surface);border-bottom:1px solid var(--border);padding:0 16px;height:54px;flex-shrink:0;gap:10px}
-.logo{display:flex;align-items:center;gap:9px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:var(--accent)}
-.hex{width:26px;height:26px;background:linear-gradient(135deg,var(--accent),var(--a2));clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);animation:hs 8s linear infinite;flex-shrink:0}
-@keyframes hs{to{filter:hue-rotate(360deg)}}
-.logo-sub{font-size:9px;color:var(--muted);font-family:'JetBrains Mono',monospace;letter-spacing:.1em}
-#glow-bar{height:2px;flex-shrink:0;background:linear-gradient(90deg,transparent,var(--accent),var(--a2),var(--a3),transparent);background-size:300% 100%;animation:gs 3s linear infinite}
-@keyframes gs{0%{background-position:200% 0}100%{background-position:-200% 0}}
-.tb-btns{display:flex;align-items:center;gap:8px;margin-left:auto}
-.tb-btn{display:flex;align-items:center;gap:5px;padding:6px 12px;border-radius:6px;border:none;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;white-space:nowrap}
-.tb-win{background:linear-gradient(135deg,var(--a2),#5b21b6);color:#fff}
-.tb-win:hover{filter:brightness(1.2);transform:translateY(-1px)}
-.tb-yt{background:linear-gradient(135deg,#ff0000,#cc0000);color:#fff}
-.tb-yt:hover{filter:brightness(1.2);transform:translateY(-1px)}
-.lw{display:flex;align-items:center;gap:7px;margin-left:8px}
-.ll{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--accent);letter-spacing:.1em}
-select{background:var(--panel);border:1px solid var(--border2);color:var(--text);font-family:'Syne',sans-serif;font-size:12px;padding:4px 9px;border-radius:var(--r);cursor:pointer;outline:none}
-select:focus{border-color:var(--accent)}
-
-/* MAIN */
-#main{display:grid;grid-template-columns:320px 1fr;gap:8px;padding:8px;flex:1;overflow:hidden;min-height:0}
-.panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);display:flex;flex-direction:column;overflow:hidden}
-.ph{padding:9px 12px 7px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0}
-.pt{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:var(--accent);letter-spacing:.1em}
-.phint{font-size:10px;color:var(--muted);margin-left:auto}
-
-/* LEFT */
-#drop-zone{flex:1;position:relative;display:flex;flex-direction:column;cursor:pointer;overflow:hidden}
-#drop-zone.drag{background:rgba(0,212,255,.05)}
-#drop-ov{position:absolute;inset:0;z-index:5;display:none;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:rgba(0,212,255,.07);border:2px dashed var(--accent);border-radius:var(--r);font-size:14px;color:var(--accent);font-family:'JetBrains Mono',monospace}
-#drop-zone.drag #drop-ov{display:flex}
-#file-list{flex:1;overflow-y:auto;padding:4px}
-.fi{display:flex;align-items:center;gap:7px;padding:6px 9px;border-radius:5px;cursor:default;transition:background .12s}
-.fi:hover{background:var(--panel2)}
-.fi.sel{background:rgba(124,58,237,.15);border-left:2px solid var(--a2)}
-.fdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
-.fname{flex:1;font-size:11px;font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.fsize{font-size:10px;color:var(--muted);flex-shrink:0}
-.fdel{opacity:0;font-size:13px;color:var(--err);cursor:pointer;background:none;border:none;padding:0;transition:opacity .12s;flex-shrink:0}
-.fi:hover .fdel{opacity:1}
-#empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--muted);pointer-events:none}
-.ei{font-size:36px;opacity:.25}
-.et{font-size:11px;font-family:'JetBrains Mono',monospace}
-.btn-row{display:flex;gap:5px;padding:7px 9px;border-top:1px solid var(--border);flex-shrink:0}
-.stat{padding:3px 12px 5px;font-size:10px;color:var(--muted);flex-shrink:0;font-family:'JetBrains Mono',monospace}
-
-/* BUTTONS */
-.btn{display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:5px;border:none;font-family:'Syne',sans-serif;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s}
-.bp{background:var(--panel2);color:var(--accent);border:1px solid var(--border2)}
-.bp:hover{background:var(--accent);color:#000}
-.bd{background:var(--panel2);color:var(--err);border:1px solid var(--border2);margin-left:auto}
-.bd:hover{background:var(--err);color:#fff}
-.bg{background:transparent;color:var(--muted);border:1px solid var(--border)}
-.bg:hover{color:var(--text);border-color:var(--border2)}
-.btn:disabled{opacity:.4;cursor:not-allowed}
-
-/* RIGHT */
-#right{display:flex;flex-direction:column;gap:8px;overflow:hidden;min-height:0}
-#out-sec{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;flex-shrink:0}
-.stitle{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--accent);letter-spacing:.1em;margin-bottom:5px}
-.out-info{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;background:var(--surface);padding:5px 9px;border-radius:5px;border:1px solid var(--border)}
-#fmt-sec{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);flex-shrink:0;overflow:hidden}
-#cat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:6px 8px 8px}
-.cbox{background:var(--surface);border:1px solid var(--border);border-radius:5px;overflow:hidden}
-.ctitle{font-size:9px;font-weight:700;padding:4px 7px 3px;font-family:'JetBrains Mono',monospace;letter-spacing:.04em;border-bottom:1px solid var(--border)}
-.cexts{display:flex;flex-wrap:wrap;gap:2px;padding:4px 5px}
-.eb{background:var(--panel2);border:1px solid var(--border);color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:9px;padding:2px 5px;border-radius:3px;cursor:pointer;transition:all .15s;white-space:nowrap}
-.eb:hover{color:var(--text)}
-.eb.act{font-weight:700;color:#000!important;border-color:transparent!important}
-.manual-row{display:flex;align-items:center;gap:7px;padding:5px 12px 8px}
-.mlbl{font-size:10px;color:var(--muted)}
-.minput{background:var(--surface);border:1px solid var(--border2);color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;padding:4px 9px;border-radius:5px;width:80px;outline:none;transition:border-color .2s}
-.minput:focus{border-color:var(--accent)}
-#prog-sec{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;flex-shrink:0}
-.pbwrap{background:var(--surface);border-radius:3px;height:5px;overflow:hidden;margin:6px 0 4px}
-.pbfill{height:100%;border-radius:3px;width:0%;background:linear-gradient(90deg,var(--accent),var(--a3));transition:width .3s ease}
-.plbl{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace}
-#cvt-btn{width:100%;padding:12px;background:var(--accent);color:#000;border:none;border-radius:var(--r);font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;letter-spacing:.1em;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px}
-#cvt-btn:hover:not(:disabled){background:var(--a3);transform:translateY(-1px);box-shadow:0 4px 20px rgba(0,212,255,.3)}
-#cvt-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
-#log-sec{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
-#log-content{flex:1;overflow-y:auto;padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.9}
-.ll{display:flex;gap:7px}
-.lts{color:var(--dim);flex-shrink:0}
-.lok{color:var(--a3)}.lerr{color:var(--err)}.linfo{color:var(--accent)}.lwarn{color:var(--warn)}
-#statusbar{height:28px;background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 14px;flex-shrink:0;gap:12px}
-#status-txt{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);flex:1}
-#status-right{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)}
-#toasts{position:fixed;bottom:14px;right:14px;display:flex;flex-direction:column;gap:6px;z-index:999}
-.toast{background:var(--panel2);border:1px solid var(--border2);border-radius:var(--r);padding:8px 12px;font-size:11px;max-width:340px;display:flex;align-items:center;gap:8px;animation:tin .25s ease;box-shadow:0 4px 20px rgba(0,0,0,.4);font-family:'JetBrains Mono',monospace}
-@keyframes tin{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
-.toast.ok{border-left:3px solid var(--a3)}.toast.err{border-left:3px solid var(--err)}.toast.warn{border-left:3px solid var(--warn)}
-.tdl{margin-left:auto;background:var(--a3);color:#000;border:none;border-radius:3px;padding:2px 7px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap}
-
-/* YOUTUBE MODAL */
-.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:600;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px)}
-.modal-bg.hidden{display:none}
-.modal-box{background:var(--panel);border:1px solid var(--border2);border-radius:14px;padding:26px 30px;width:520px;max-width:94vw;font-family:'JetBrains Mono',monospace}
-.modal-title{color:var(--accent);font-size:15px;margin-bottom:5px;display:flex;align-items:center;gap:8px}
-.modal-sub{color:var(--muted);font-size:10px;margin-bottom:16px;line-height:1.7}
-.yt-input{width:100%;background:var(--surface);border:1px solid var(--border2);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:9px 12px;border-radius:7px;outline:none;transition:border-color .2s;margin-bottom:11px}
-.yt-input:focus{border-color:var(--accent)}
-.fmt-row{display:flex;gap:7px;margin-bottom:14px}
-.fmt-btn{flex:1;padding:8px;border-radius:6px;border:2px solid var(--border2);background:var(--surface);color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s}
-.fmt-btn.act{border-color:var(--accent);color:var(--accent);background:rgba(0,212,255,.08)}
-.fmt-btn.act-red{border-color:#ff3333;color:#ff4444;background:rgba(255,0,0,.07)}
-.modal-actions{display:flex;gap:9px}
-.yt-go{flex:1;background:var(--accent);color:#000;border:none;border-radius:7px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s}
-.yt-go:hover{background:var(--a3)}
-.yt-go.red{background:#ff0000;color:#fff}
-.yt-go.red:hover{background:#cc0000}
-.modal-close{background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:7px;padding:10px 14px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:12px}
-.modal-close:hover{color:var(--text)}
-#yt-status{margin-top:10px;font-size:10px;color:var(--muted);min-height:14px;text-align:center}
-#yt-pb-wrap{background:var(--surface);border-radius:3px;height:4px;overflow:hidden;margin-top:7px;display:none}
-#yt-pb-fill{height:100%;background:linear-gradient(90deg,#ff0000,#ff6b6b);width:0%;transition:width .3s}
-.svc-section{margin-top:13px;padding-top:13px;border-top:1px solid var(--border)}
-.svc-title{color:var(--muted);font-size:10px;margin-bottom:8px}
-.svc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
-.svc-btn{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 5px;text-align:center;cursor:pointer;transition:all .15s;color:var(--text);font-size:10px;text-decoration:none;display:block}
-.svc-btn:hover{border-color:var(--accent);color:var(--accent)}
-.svc-icon{font-size:17px;display:block;margin-bottom:3px}
-.svc-tab{background:transparent;border:none;border-bottom:2px solid transparent;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:11px;padding:7px 12px;cursor:pointer;transition:all .15s;margin-bottom:-1px}
-.svc-tab:hover{color:var(--text)}
-.act-tab{color:var(--accent)!important;border-bottom-color:var(--accent)!important}
-
-/* MEDIA WARNING MODAL */
-#mw-modal{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:700;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
-#mw-modal.hidden{display:none}
-#mw-box{background:var(--panel);border:2px solid var(--warn);border-radius:12px;padding:24px 26px;max-width:400px;width:92vw;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.7}
-#mw-box h3{color:var(--warn);margin-bottom:10px;font-size:14px}
-#mw-box .mw-name{color:var(--accent);margin-bottom:4px}
-#mw-box .mw-info{color:var(--muted);font-size:10px;margin-bottom:14px}
-.mw-btns{display:flex;gap:9px;margin-top:14px}
-.mw-ok{flex:1;background:var(--accent);color:#000;border:none;border-radius:6px;padding:9px;font-weight:700;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:12px}
-.mw-cancel{flex:1;background:transparent;color:var(--muted);border:1px solid var(--dim);border-radius:6px;padding:9px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:12px}
-
-@media(max-width:860px){#main{grid-template-columns:1fr;overflow-y:auto}html,body{overflow:auto}#app{height:auto}#cat-grid{grid-template-columns:repeat(2,1fr)}}
-</style>
-</head>
-<body>
-<canvas id="bg-canvas"></canvas>
-
-<div id="app">
-  <!-- TOPBAR -->
-  <div id="topbar">
-    <div class="logo">
-      <div class="hex"></div>
-      <div>
-        <div># ZENKARI</div>
-        <div class="logo-sub">CONVERTER v3.2 — WEB</div>
-      </div>
-    </div>
-    <div class="tb-btns">
-      <button class="tb-btn tb-win" onclick="window.open('https://github.com/fonnjee10','_blank')">
-        ⬇ Version Windows EXE
-      </button>
-      <button class="tb-btn tb-yt" onclick="showYT()">
-        ▶ YouTube → MP3/MP4
-      </button>
-    </div>
-    <div class="lw">
-      <span class="ll" id="lbl-lang">LANGUE</span>
-      <select id="lang-sel">
-        <option value="fr">🇫🇷 Français</option>
-        <option value="en">🇬🇧 English</option>
-        <option value="es">🇪🇸 Español</option>
-        <option value="de">🇩🇪 Deutsch</option>
-        <option value="it">🇮🇹 Italiano</option>
-        <option value="pt">🇵🇹 Português</option>
-        <option value="ru">🇷🇺 Русский</option>
-        <option value="zh">🇨🇳 中文</option>
-        <option value="ja">🇯🇵 日本語</option>
-        <option value="ar">🇸🇦 العربية</option>
-        <option value="ko">🇰🇷 한국어</option>
-        <option value="nl">🇳🇱 Nederlands</option>
-        <option value="pl">🇵🇱 Polski</option>
-        <option value="tr">🇹🇷 Türkçe</option>
-        <option value="sv">🇸🇪 Svenska</option>
-      </select>
-    </div>
-  </div>
-  <div id="glow-bar"></div>
-
-  <!-- MAIN -->
-  <div id="main">
-    <!-- LEFT: files -->
-    <div class="panel">
-      <div class="ph">
-        <span class="pt" id="lbl-src">FICHIERS SOURCE</span>
-        <span class="phint" id="lbl-drag">ou glisser-déposer →</span>
-      </div>
-      <div id="drop-zone">
-        <div id="drop-ov"><div>⬇</div><div id="lbl-drop">Déposer ici</div></div>
-        <div id="file-list">
-          <div id="empty-state">
-            <div class="ei">📂</div>
-            <div class="et" id="lbl-empty">Aucun fichier</div>
-          </div>
-        </div>
-      </div>
-      <div class="btn-row">
-        <button class="btn bp" id="btn-add" onclick="pickFiles()">+ <span id="lbl-add">Ajouter</span></button>
-        <button class="btn bd" id="btn-clear" onclick="clearFiles()">✕ <span id="lbl-clear">Vider</span></button>
-      </div>
-      <div class="stat" id="stat-bar">0 fichier(s)</div>
-      <input type="file" id="file-input" multiple style="display:none">
-    </div>
-
-    <!-- RIGHT -->
-    <div id="right">
-      <div id="out-sec">
-        <div class="stitle" id="lbl-out">SORTIE</div>
-        <div class="out-info" id="lbl-out-info">Fichiers convertis téléchargés automatiquement dans votre dossier Téléchargements.</div>
-      </div>
-
-      <div id="fmt-sec" class="panel">
-        <div class="ph"><span class="pt" id="lbl-fmt">FORMAT CIBLE</span></div>
-        <div id="cat-grid"></div>
-        <div class="manual-row">
-          <span class="mlbl" id="lbl-manual">Ext. manuelle :</span>
-          <input type="text" class="minput" id="mext" placeholder="mp3" maxlength="8">
-        </div>
-      </div>
-
-      <div id="prog-sec">
-        <div style="display:flex;align-items:center;justify-content:space-between">
-          <span class="plbl" id="prog-lbl">Prêt.</span>
-          <span class="plbl" id="prog-cnt" style="color:var(--accent)"></span>
-        </div>
-        <div class="pbwrap"><div class="pbfill" id="prog-bar"></div></div>
-        <button id="cvt-btn" onclick="startConvert()">⚡ <span id="lbl-cvt">CONVERTIR</span></button>
-      </div>
-
-      <div id="log-sec" class="panel">
-        <div class="ph">
-          <span class="pt" id="lbl-log">JOURNAL</span>
-          <button class="btn bg" style="padding:2px 7px;font-size:10px;margin-left:auto" onclick="copyLog()" id="btn-cp">📄 Copier</button>
-          <button class="btn bg" style="padding:2px 7px;font-size:10px;margin-left:3px" onclick="clearLog()" id="btn-cl">🗑 Effacer</button>
-        </div>
-        <div id="log-content"></div>
-      </div>
-    </div>
-  </div>
-
-  <div id="statusbar">
-    <span id="status-txt">Prêt.</span>
-    <span id="status-right">Zenkari Labs © 2025 · v3.2 Web</span>
-  </div>
-</div>
-
-<!-- TOASTS -->
-<div id="toasts"></div>
-
-<!-- YOUTUBE MODAL -->
-<div class="modal-bg hidden" id="yt-modal">
-  <div class="modal-box" style="width:600px;max-width:96vw">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div class="modal-title">▶ <span style="color:#ff3333">YouTube</span> Converter</div>
-      <button class="modal-close" onclick="hideYT()" style="padding:5px 10px">✕</button>
-    </div>
-
-    <!-- Server status -->
-    <div id="yt-server-status" style="background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:9px 12px;margin-bottom:12px;font-size:10px;font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:8px">
-      <div id="yt-srv-dot" style="width:8px;height:8px;border-radius:50%;background:var(--dim);flex-shrink:0"></div>
-      <span id="yt-srv-txt">Vérification du serveur local…</span>
-      <button onclick="checkServer()" style="margin-left:auto;background:var(--panel2);border:1px solid var(--border2);color:var(--accent);border-radius:4px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:'JetBrains Mono',monospace">↺ Vérifier</button>
-    </div>
-
-    <!-- Server not running — instructions -->
-    <div id="yt-srv-guide" style="background:rgba(0,212,255,.05);border:1px solid var(--accent);border-radius:7px;padding:12px 14px;margin-bottom:12px;font-size:10px;font-family:'JetBrains Mono',monospace;line-height:1.9;display:none">
-      <div style="color:var(--accent);font-weight:700;margin-bottom:6px">⚙ Lance le serveur local une fois :</div>
-      <div style="color:var(--muted)">1. Installe yt-dlp :</div>
-      <div style="background:var(--surface);padding:4px 8px;border-radius:4px;color:var(--a3);margin:3px 0 8px">pip install yt-dlp</div>
-      <div style="color:var(--muted)">2. Lance le serveur (dans le dossier du HTML) :</div>
-      <div style="background:var(--surface);padding:4px 8px;border-radius:4px;color:var(--a3);margin:3px 0 8px">python ZenkariYT_Server.py</div>
-      <div style="color:var(--muted)">3. Reviens ici et clique <b style="color:var(--accent)">↺ Vérifier</b></div>
-    </div>
-
-    <!-- URL + info -->
-    <div style="display:flex;gap:8px;margin-bottom:10px">
-      <input type="url" class="yt-input" id="yt-url" placeholder="https://www.youtube.com/watch?v=..." style="margin-bottom:0;flex:1" oninput="ytClearInfo()">
-      <button class="yt-go" onclick="ytGetInfo()" id="yt-info-btn" style="white-space:nowrap;padding:9px 14px;background:var(--a2)">🔍 Info</button>
-    </div>
-
-    <!-- Video info card -->
-    <div id="yt-info-card" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:10px 12px;margin-bottom:10px;font-family:'JetBrains Mono',monospace;font-size:11px">
-      <div id="yt-info-title" style="color:var(--text);font-weight:700;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
-      <div style="display:flex;gap:12px">
-        <span id="yt-info-dur" style="color:var(--muted)"></span>
-        <span id="yt-info-who" style="color:var(--muted)"></span>
-      </div>
-    </div>
-
-    <!-- Format + quality -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
-      <div>
-        <div style="font-size:9px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-bottom:5px">FORMAT</div>
-        <div class="fmt-row" style="margin-bottom:0">
-          <button class="fmt-btn act" id="fmt-mp3" onclick="setFmt('mp3')">🎵 MP3</button>
-          <button class="fmt-btn" id="fmt-mp4" onclick="setFmt('mp4')">🎬 MP4</button>
-          <button class="fmt-btn" id="fmt-wav" onclick="setFmt('wav')">🔊 WAV</button>
-        </div>
-      </div>
-      <div>
-        <div style="font-size:9px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-bottom:5px">QUALITÉ</div>
-        <select id="yt-quality" style="width:100%;padding:7px 9px;background:var(--surface);border:1px solid var(--border2);color:var(--text);border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:11px;outline:none">
-          <option value="best">🏆 Meilleure</option>
-          <option value="1080">📺 1080p (vidéo)</option>
-          <option value="720">📺 720p (vidéo)</option>
-          <option value="high" selected>🎵 Haute (audio)</option>
-          <option value="medium">🎵 Moyenne (audio)</option>
-        </select>
-      </div>
-    </div>
-
-    <!-- Progress -->
-    <div id="yt-pb-wrap" style="display:none;margin-bottom:8px">
-      <div style="background:var(--surface);border-radius:3px;height:5px;overflow:hidden">
-        <div id="yt-pb-fill" style="height:100%;background:linear-gradient(90deg,#ff0000,#ff6b6b);width:0%;transition:width .3s"></div>
-      </div>
-    </div>
-    <div id="yt-status" style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;min-height:14px;margin-bottom:10px"></div>
-
-    <!-- Download button -->
-    <button class="yt-go" id="yt-dl-btn" onclick="ytDownloadLocal()" style="width:100%;padding:12px;font-size:13px">⬇ Télécharger</button>
-  </div>
-</div>
-<!-- MEDIA WARNING MODAL -->
-<div id="mw-modal" class="hidden">
-  <div id="mw-box">
-    <h3>⚠ Conversion temps réel</h3>
-    <div class="mw-name" id="mw-name"></div>
-    <div class="mw-info" id="mw-info"></div>
-    <div class="mw-btns">
-      <button class="mw-ok" id="mw-ok">⚡ Continuer</button>
-      <button class="mw-cancel" id="mw-cancel">✕ Annuler</button>
-    </div>
-  </div>
-</div>
-
-<script>
-'use strict';
-
-/* ════════════════════════════════════════════
-   I18N — 15 LANGUES
-════════════════════════════════════════════ */
-const I18N = {
-  fr:{src:"FICHIERS SOURCE",drag:"ou glisser-déposer →",drop:"Déposer ici",empty:"Aucun fichier",add:"Ajouter",clear:"Vider",out:"SORTIE",outInfo:"Fichiers convertis téléchargés automatiquement.",fmt:"FORMAT CIBLE",manual:"Ext. manuelle :",cvt:"CONVERTIR",cvting:"EN COURS…",log:"JOURNAL",lang:"LANGUE",ready:"Prêt.",noFile:"Aucun fichier.",noExt:"Choisissez un format.",ok:"{n} converti(s) ✓",partial:"{ok} OK, {err} erreur(s).",logS:"=== {n} fichier(s) → .{ext} ===",logD:"=== Terminé {ok} OK / {err} err / {total} ===",cp:"📄 Copier",cl:"🗑 Effacer",dl:"Télécharger",nf:"{n} fichier(s)"},
-  en:{src:"SOURCE FILES",drag:"or drag & drop →",drop:"Drop here",empty:"No files",add:"Add",clear:"Clear",out:"OUTPUT",outInfo:"Converted files auto-downloaded.",fmt:"TARGET FORMAT",manual:"Manual ext:",cvt:"CONVERT",cvting:"CONVERTING…",log:"LOG",lang:"LANGUAGE",ready:"Ready.",noFile:"No file.",noExt:"Choose a format.",ok:"{n} converted ✓",partial:"{ok} OK, {err} error(s).",logS:"=== {n} file(s) → .{ext} ===",logD:"=== Done {ok} OK / {err} err / {total} ===",cp:"📄 Copy",cl:"🗑 Clear",dl:"Download",nf:"{n} file(s)"},
-  es:{src:"ARCHIVOS FUENTE",drag:"o arrastrar →",drop:"Soltar aquí",empty:"Sin archivos",add:"Añadir",clear:"Vaciar",out:"SALIDA",outInfo:"Archivos convertidos descargados automáticamente.",fmt:"FORMATO DESTINO",manual:"Ext. manual:",cvt:"CONVERTIR",cvting:"EN CURSO…",log:"REGISTRO",lang:"IDIOMA",ready:"Listo.",noFile:"Sin archivo.",noExt:"Elige un formato.",ok:"{n} convertido(s) ✓",partial:"{ok} OK, {err} error(es).",logS:"=== {n} → .{ext} ===",logD:"=== {ok} OK / {err} err / {total} ===",cp:"📄 Copiar",cl:"🗑 Borrar",dl:"Descargar",nf:"{n} archivo(s)"},
-  de:{src:"QUELLDATEIEN",drag:"drag & drop →",drop:"Hier ablegen",empty:"Keine Dateien",add:"Hinzufügen",clear:"Leeren",out:"AUSGABE",outInfo:"Konvertierte Dateien werden heruntergeladen.",fmt:"ZIELFORMAT",manual:"Erweiterung:",cvt:"KONVERTIEREN",cvting:"LÄUFT…",log:"PROTOKOLL",lang:"SPRACHE",ready:"Bereit.",noFile:"Keine Datei.",noExt:"Zielformat wählen.",ok:"{n} konvertiert ✓",partial:"{ok} OK, {err} Fehler.",logS:"=== {n} → .{ext} ===",logD:"=== {ok} OK / {err} Fehler / {total} ===",cp:"📄 Kopieren",cl:"🗑 Löschen",dl:"Herunterladen",nf:"{n} Datei(en)"},
-  it:{src:"FILE SORGENTE",drag:"o trascina →",drop:"Rilascia qui",empty:"Nessun file",add:"Aggiungi",clear:"Svuota",out:"OUTPUT",outInfo:"File convertiti scaricati automaticamente.",fmt:"FORMATO DEST.",manual:"Est. manuale:",cvt:"CONVERTI",cvting:"IN CORSO…",log:"REGISTRO",lang:"LINGUA",ready:"Pronto.",noFile:"Nessun file.",noExt:"Scegli un formato.",ok:"{n} convertiti ✓",partial:"{ok} OK, {err} errore/i.",logS:"=== {n} → .{ext} ===",logD:"=== {ok} OK / {err} err / {total} ===",cp:"📄 Copia",cl:"🗑 Cancella",dl:"Scarica",nf:"{n} file"},
-  pt:{src:"ARQUIVOS FONTE",drag:"ou arrastar →",drop:"Soltar aqui",empty:"Sem arquivos",add:"Adicionar",clear:"Limpar",out:"SAÍDA",outInfo:"Arquivos convertidos baixados automaticamente.",fmt:"FORMATO ALVO",manual:"Ext. manual:",cvt:"CONVERTER",cvting:"CONVERTENDO…",log:"LOG",lang:"IDIOMA",ready:"Pronto.",noFile:"Nenhum arquivo.",noExt:"Escolha um formato.",ok:"{n} convertido(s) ✓",partial:"{ok} OK, {err} erro(s).",logS:"=== {n} → .{ext} ===",logD:"=== {ok} OK / {err} err / {total} ===",cp:"📄 Copiar",cl:"🗑 Limpar",dl:"Baixar",nf:"{n} arquivo(s)"},
-  ru:{src:"ИСХОДНЫЕ ФАЙЛЫ",drag:"или перетащите →",drop:"Отпустите здесь",empty:"Нет файлов",add:"Добавить",clear:"Очистить",out:"ВЫВОД",outInfo:"Конвертированные файлы загрузятся автоматически.",fmt:"ЦЕЛЕВОЙ ФОРМАТ",manual:"Расширение:",cvt:"КОНВЕРТИРОВАТЬ",cvting:"В ПРОЦЕССЕ…",log:"ЖУРНАЛ",lang:"ЯЗЫК",ready:"Готово.",noFile:"Файл не выбран.",noExt:"Выберите формат.",ok:"{n} конвертировано ✓",partial:"{ok} OK, {err} ошибок.",logS:"=== {n} → .{ext} ===",logD:"=== {ok} OK / {err} / {total} ===",cp:"📄 Копировать",cl:"🗑 Очистить",dl:"Скачать",nf:"{n} файл(ов)"},
-  zh:{src:"源文件",drag:"或拖放 →",drop:"拖放到这里",empty:"无文件",add:"添加",clear:"清空",out:"输出",outInfo:"转换后的文件将自动下载。",fmt:"目标格式",manual:"手动扩展名：",cvt:"转换",cvting:"转换中…",log:"日志",lang:"语言",ready:"就绪。",noFile:"未选择文件。",noExt:"请选择格式。",ok:"{n} 转换成功 ✓",partial:"{ok} 成功, {err} 错误。",logS:"=== {n} → .{ext} ===",logD:"=== {ok} OK / {err} / {total} ===",cp:"📄 复制",cl:"🗑 清除",dl:"下载",nf:"{n} 个文件"},
-  ja:{src:"ソースファイル",drag:"またはドラッグ →",drop:"ここにドロップ",empty:"ファイルなし",add:"追加",clear:"クリア",out:"出力",outInfo:"変換されたファイルは自動的にダウンロードされます。",fmt:"ターゲット形式",manual:"手動拡張子：",cvt:"変換",cvting:"変換中…",log:"ログ",lang:"言語",ready:"準備完了。",noFile:"ファイルなし。",noExt:"形式を選択。",ok:"{n} 変換完了 ✓",partial:"{ok} 成功, {err} エラー。",logS:"=== {n} → .{ext} ===",logD:"=== {ok} OK / {err} / {total} ===",cp:"📄 コピー",cl:"🗑 クリア",dl:"ダウンロード",nf:"{n} ファイル"},
-  ar:{src:"الملفات المصدر",drag:"أو اسحب →",drop:"أفلت هنا",empty:"لا ملفات",add:"إضافة",clear:"مسح",out:"الإخراج",outInfo:"سيتم تنزيل الملفات المحولة تلقائياً.",fmt:"الصيغة المستهدفة",manual:"الامتداد:",cvt:"تحويل",cvting:"جارٍ…",log:"السجل",lang:"اللغة",ready:"جاهز.",noFile:"لا ملف.",noExt:"اختر صيغة.",ok:"{n} تم تحويله ✓",partial:"{ok} ناجح، {err} خطأ.",logS:"=== {n} → .{ext} ===",logD:"=== {ok} / {err} / {total} ===",cp:"📄 نسخ",cl:"🗑 مسح",dl:"تنزيل",nf:"{n} ملف"},
-  ko:{src:"소스 파일",drag:"또는 드래그 →",drop:"여기에 놓기",empty:"파일 없음",add:"추가",clear:"지우기",out:"출력",outInfo:"변환된 파일은 자동으로 다운로드됩니다.",fmt:"대상 형식",manual:"수동 확장자:",cvt:"변환",cvting:"변환 중…",log:"로그",lang:"언어",ready:"준비됨.",noFile:"파일 없음.",noExt:"형식 선택.",ok:"{n}개 변환 ✓",partial:"{ok} OK, {err} 오류.",logS:"=== {n} → .{ext} ===",logD:"=== {ok} / {err} / {total} ===",cp:"📄 복사",cl:"🗑 지우기",dl:"다운로드",nf:"{n} 파일"},
-  nl:{src:"BRONBESTANDEN",drag:"of slepen →",drop:"Hier neerzetten",empty:"Geen bestanden",add:"Toevoegen",clear:"Wissen",out:"UITVOER",outInfo:"Geconverteerde bestanden worden gedownload.",fmt:"DOELFORMAAT",manual:"Extensie:",cvt:"CONVERTEREN",cvting:"BEZIG…",log:"LOGBOEK",lang:"TAAL",ready:"Klaar.",noFile:"Geen bestand.",noExt:"Kies een formaat.",ok:"{n} geconverteerd ✓",partial:"{ok} OK, {err} fout(en).",logS:"=== {n} → .{ext} ===",logD:"=== {ok} / {err} / {total} ===",cp:"📄 Kopiëren",cl:"🗑 Wissen",dl:"Downloaden",nf:"{n} bestand(en)"},
-  pl:{src:"PLIKI ŹRÓDŁOWE",drag:"lub przeciągnij →",drop:"Upuść tutaj",empty:"Brak plików",add:"Dodaj",clear:"Wyczyść",out:"WYJŚCIE",outInfo:"Skonwertowane pliki zostaną pobrane.",fmt:"FORMAT DOCELOWY",manual:"Rozszerzenie:",cvt:"KONWERTUJ",cvting:"W TOKU…",log:"DZIENNIK",lang:"JĘZYK",ready:"Gotowy.",noFile:"Brak pliku.",noExt:"Wybierz format.",ok:"{n} przekonwertowanych ✓",partial:"{ok} OK, {err} błąd(ów).",logS:"=== {n} → .{ext} ===",logD:"=== {ok} / {err} / {total} ===",cp:"📄 Kopiuj",cl:"🗑 Wyczyść",dl:"Pobierz",nf:"{n} plik(ów)"},
-  tr:{src:"KAYNAK DOSYALAR",drag:"veya sürükle →",drop:"Buraya bırak",empty:"Dosya yok",add:"Ekle",clear:"Temizle",out:"ÇIKTI",outInfo:"Dönüştürülen dosyalar otomatik indirilecek.",fmt:"HEDEF FORMAT",manual:"Uzantı:",cvt:"DÖNÜŞTÜR",cvting:"DEVAM EDİYOR…",log:"GÜNLÜK",lang:"DİL",ready:"Hazır.",noFile:"Dosya yok.",noExt:"Format seçin.",ok:"{n} dönüştürüldü ✓",partial:"{ok} OK, {err} hata.",logS:"=== {n} → .{ext} ===",logD:"=== {ok} / {err} / {total} ===",cp:"📄 Kopyala",cl:"🗑 Temizle",dl:"İndir",nf:"{n} dosya"},
-  sv:{src:"KÄLLFILER",drag:"eller dra →",drop:"Släpp här",empty:"Inga filer",add:"Lägg till",clear:"Rensa",out:"UTDATA",outInfo:"Konverterade filer laddas ned automatiskt.",fmt:"MÅLFORMAT",manual:"Tillägg:",cvt:"KONVERTERA",cvting:"PÅGÅR…",log:"LOGG",lang:"SPRÅK",ready:"Redo.",noFile:"Ingen fil.",noExt:"Välj format.",ok:"{n} konverterade ✓",partial:"{ok} OK, {err} fel.",logS:"=== {n} → .{ext} ===",logD:"=== {ok} / {err} / {total} ===",cp:"📄 Kopiera",cl:"🗑 Rensa",dl:"Ladda ned",nf:"{n} fil(er)"},
-};
-let LANG='fr';
-const T=(k,v={})=>{let s=(I18N[LANG]||I18N.fr)[k]||k;for(const[a,b]of Object.entries(v))s=s.replaceAll(`{${a}}`,b);return s;};
-
-/* ════════════════════════════════════════════
-   FORMAT CATALOGUE
-════════════════════════════════════════════ */
-const CATS={
-  image:   {label:'🖼 Images',   color:'var(--img)', exts:['png','jpg','jpeg','bmp','gif','webp','tiff','ico','svg']},
-  video:   {label:'🎬 Vidéo',    color:'var(--vid)', exts:['mp4','webm','avi','mkv','mov','flv','wmv','3gp','mpeg']},
-  audio:   {label:'🎵 Audio',    color:'var(--aud)', exts:['mp3','wav','ogg','flac','aac','m4a','opus','wma']},
-  document:{label:'📄 Documents',color:'var(--doc)', exts:['txt','md','html','pdf','docx','xlsx','csv','xls']},
-  data:    {label:'📊 Données',  color:'var(--dat)', exts:['json','xml','yaml','toml','ini','env','cfg']},
-  archive: {label:'📦 Archives', color:'var(--arc)', exts:['zip','tar','gz']},
-  code:    {label:'💻 Code',     color:'var(--cod)', exts:['py','js','ts','css','sql','sh','bat']},
-  subtitle:{label:'💬 Sous-titres',color:'var(--sub)',exts:['srt','vtt']},
-};
-const CAT_OF={};
-for(const[cat,d]of Object.entries(CATS))for(const e of d.exts)CAT_OF[e]=cat;
-
-/* ════════════════════════════════════════════
-   STATE
-════════════════════════════════════════════ */
-let files=[],fid=0,selExt='',running=false,logLines=[];
-
-/* ════════════════════════════════════════════
-   CANVAS BACKGROUND
-════════════════════════════════════════════ */
-(()=>{
-  const cv=document.getElementById('bg-canvas'),ctx=cv.getContext('2d');
-  let W,H,P=[];
-  const resize=()=>{W=cv.width=innerWidth;H=cv.height=innerHeight;};
-  resize();addEventListener('resize',resize);
-  for(let i=0;i<65;i++)P.push({x:Math.random()*1920,y:Math.random()*1080,vx:(Math.random()-.5)*.22,vy:(Math.random()-.5)*.22,r:Math.random()*1.2+.4,c:Math.random()<.5?'#00d4ff':'#7c3aed',l:Math.random()*6.28});
-  function draw(){
-    ctx.clearRect(0,0,W,H);
-    P.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.l+=.003;if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;
-      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle=p.c;ctx.globalAlpha=Math.sin(p.l)*.3+.07;ctx.fill();});
-    ctx.globalAlpha=1;
-    for(let i=0;i<P.length;i++)for(let j=i+1;j<P.length;j++){
-      const dx=P[i].x-P[j].x,dy=P[i].y-P[j].y,d=Math.sqrt(dx*dx+dy*dy);
-      if(d<85){ctx.beginPath();ctx.moveTo(P[i].x,P[i].y);ctx.lineTo(P[j].x,P[j].y);ctx.strokeStyle='#00d4ff';ctx.globalAlpha=(1-d/85)*.055;ctx.lineWidth=.4;ctx.stroke();}
-    }
-    ctx.globalAlpha=1;requestAnimationFrame(draw);
-  }draw();
-})();
-
-/* ════════════════════════════════════════════
-   FORMAT GRID
-════════════════════════════════════════════ */
-function buildGrid(){
-  const g=document.getElementById('cat-grid');g.innerHTML='';
-  for(const[cat,d]of Object.entries(CATS)){
-    const box=document.createElement('div');box.className='cbox';
-    const tit=document.createElement('div');tit.className='ctitle';tit.textContent=d.label;tit.style.color=d.color;box.appendChild(tit);
-    const exts=document.createElement('div');exts.className='cexts';
-    for(const ext of d.exts){
-      const b=document.createElement('button');b.className='eb';b.id='e-'+ext;b.textContent='.'+ext;
-      b.style.color=d.color;b.style.borderColor=d.color+'40';
-      b.onclick=()=>pickExt(ext);exts.appendChild(b);
-    }
-    box.appendChild(exts);g.appendChild(box);
-  }
-}
-function pickExt(ext){
-  document.querySelectorAll('.eb').forEach(b=>b.classList.remove('act'));
-  const b=document.getElementById('e-'+ext);
-  if(b){b.classList.add('act');const cat=CAT_OF[ext]||'image';b.style.background=CATS[cat]?.color||'var(--accent)';}
-  selExt=ext;document.getElementById('mext').value=ext;
-}
-document.getElementById('mext').addEventListener('input',function(){
-  const v=this.value.trim().toLowerCase().replace(/^\./,'');
-  selExt=v;
-  document.querySelectorAll('.eb').forEach(b=>b.classList.remove('act'));
-  const b=document.getElementById('e-'+v);if(b){b.classList.add('act');const cat=CAT_OF[v]||'image';b.style.background=CATS[cat]?.color||'var(--accent)';}
-});
-
-/* ════════════════════════════════════════════
-   FILE MANAGEMENT
-════════════════════════════════════════════ */
-const fmtSz=b=>b<1024?b+'B':b<1048576?(b/1024).toFixed(1)+'KB':(b/1048576).toFixed(2)+'MB';
-const getColor=ext=>{const cat=CAT_OF[(ext||'').toLowerCase().replace(/^\./,'')];return CATS[cat]?.color||'var(--accent)';};
-
-function renderFiles(){
-  const list=document.getElementById('file-list'),emp=document.getElementById('empty-state');
-  list.querySelectorAll('.fi').forEach(e=>e.remove());
-  if(!files.length){emp.style.display='flex';return;}
-  emp.style.display='none';
-  files.forEach(({file,id})=>{
-    const ext=file.name.split('.').pop()||'';
-    const el=document.createElement('div');el.className='fi';el.dataset.id=id;
-    el.innerHTML=`<div class="fdot" style="background:${getColor(ext)}"></div><div class="fname" title="${file.name}">${file.name}</div><div class="fsize">${fmtSz(file.size)}</div><button class="fdel" onclick="rmFile(${id})">✕</button>`;
-    el.onclick=e=>{if(!e.target.classList.contains('fdel')){document.querySelectorAll('.fi').forEach(i=>i.classList.remove('sel'));el.classList.add('sel');}};
-    list.appendChild(el);
-  });
-  updStats();
-}
-function updStats(){
-  const n=files.length,cats={};
-  files.forEach(({file})=>{const e=file.name.split('.').pop()||'';const c=CAT_OF[e]||'doc';cats[c]=(cats[c]||0)+1;});
-  document.getElementById('stat-bar').textContent=T('nf',{n})+'  '+Object.entries(cats).map(([k,v])=>`${v} ${k}`).join('  ');
-}
-function addFiles(fl){
-  for(const f of fl)if(!files.find(e=>e.file.name===f.name&&e.file.size===f.size))files.push({file:f,id:++fid});
-  renderFiles();
-}
-window.rmFile=id=>{files=files.filter(e=>e.id!==id);renderFiles();};
-function clearFiles(){files=[];renderFiles();}
-function pickFiles(){document.getElementById('file-input').click();}
-document.getElementById('file-input').onchange=e=>{addFiles(e.target.files);e.target.value='';};
-const dz=document.getElementById('drop-zone');
-dz.ondragover=e=>{e.preventDefault();dz.classList.add('drag');};
-dz.ondragleave=()=>dz.classList.remove('drag');
-dz.ondrop=e=>{e.preventDefault();dz.classList.remove('drag');addFiles(e.dataTransfer.files);};
-dz.onclick=e=>{if(!e.target.closest('.fi')&&!e.target.classList.contains('fdel'))pickFiles();};
-
-/* ════════════════════════════════════════════
-   LOG
-════════════════════════════════════════════ */
-function log(msg,type='info'){
-  const ts=new Date().toTimeString().slice(0,8);
-  logLines.push(`[${ts}] ${msg}`);
-  const c=document.getElementById('log-content');
-  const l=document.createElement('div');l.className='ll';
-  l.innerHTML=`<span class="lts">[${ts}]</span><span class="l${type}">${msg.replace(/</g,'&lt;')}</span>`;
-  c.appendChild(l);c.scrollTop=c.scrollHeight;
-}
-function clearLog(){logLines=[];document.getElementById('log-content').innerHTML='';}
-function copyLog(){navigator.clipboard?.writeText(logLines.join('\n'));setStatus('Journal copié ✓');}
-function setStatus(msg){document.getElementById('status-txt').textContent=msg;}
-function setProg(pct,lbl){
-  document.getElementById('prog-bar').style.width=Math.min(100,pct)+'%';
-  if(lbl)document.getElementById('prog-lbl').textContent=lbl;
-}
-function toast(msg,type='ok',blob=null,name=''){
-  const c=document.getElementById('toasts'),el=document.createElement('div');
-  el.className='toast '+type;el.innerHTML=`<span style="flex:1">${msg}</span>`;
-  if(blob&&name){const b=document.createElement('button');b.className='tdl';b.textContent=T('dl');b.onclick=()=>saveAs(blob,name);el.appendChild(b);}
-  c.appendChild(el);setTimeout(()=>el.remove(),8000);
-}
-
-/* ════════════════════════════════════════════
-   HELPERS
-════════════════════════════════════════════ */
-const readText=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsText(f,'UTF-8');});
-const readBuf=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsArrayBuffer(f);});
-const blobToUrl=b=>new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsDataURL(b);});
-const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
-/* ════════════════════════════════════════════
-   CONVERSIONS
-════════════════════════════════════════════ */
-
-// ── Image → Image/PDF/SVG ─────────────────
-async function convImg(file,de){
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  if(de==='svg'){
-    const blob=await convImg(file,'png');const du=await blobToUrl(blob);
-    const img=await new Promise((res,rej)=>{const i=new Image(),u=URL.createObjectURL(blob);i.onload=()=>{URL.revokeObjectURL(u);res(i);};i.onerror=rej;i.src=u;});
-    const svg=`<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${img.naturalWidth}" height="${img.naturalHeight}"><image xlink:href="${du}" width="${img.naturalWidth}" height="${img.naturalHeight}"/></svg>`;
-    return {blob:new Blob([svg],{type:'image/svg+xml'}),name:stem+'.svg'};
-  }
-  return new Promise((res,rej)=>{
-    const img=new Image(),url=URL.createObjectURL(file);
-    img.onload=async()=>{
-      const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;
-      const ctx=cv.getContext('2d');
-      if(['jpg','jpeg','bmp'].includes(de)){ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);}
-      ctx.drawImage(img,0,0);URL.revokeObjectURL(url);
-      if(de==='pdf'){
-        try{
-          const pb=await new Promise(r=>cv.toBlob(r,'image/png'));
-          const ab=await pb.arrayBuffer();
-          const doc=await PDFLib.PDFDocument.create();
-          const pi=await doc.embedPng(ab);
-          const {width:iw,height:ih}=pi.scale(1);
-          const pg=doc.addPage([iw,ih]);pg.drawImage(pi,{x:0,y:0,width:iw,height:ih});
-          const bytes=await doc.save();
-          res({blob:new Blob([bytes],{type:'application/pdf'}),name:stem+'.pdf'});
-        }catch(e){rej(e);}return;
-      }
-      const m={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',bmp:'image/bmp',tiff:'image/tiff',ico:'image/x-icon'};
-      const q=['jpg','jpeg','webp'].includes(de)?0.92:undefined;
-      cv.toBlob(b=>b?res({blob:b,name:stem+'.'+de}):rej(new Error('Canvas failed')),m[de]||'image/png',q);
-    };
-    img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('Image load failed'));};img.src=url;
-  });
-}
-
-// ── TXT/Code → html/md/pdf/txt ────────────
-async function convText(file,se,de){
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const text=await readText(file);
-  if(de==='html'){const h=`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:monospace;background:#0a0c10;color:#e2e8f0;padding:2rem}pre{background:#111520;border:1px solid #1e2535;border-radius:8px;padding:1.5rem;overflow:auto;white-space:pre-wrap}h1{color:#00d4ff;font-size:1rem;margin-bottom:1rem}</style></head><body><h1>${esc(file.name)}</h1><pre>${esc(text)}</pre></body></html>`;return{blob:new Blob([h],{type:'text/html'}),name:stem+'.html'};}
-  if(de==='md')return{blob:new Blob([`# ${file.name}\n\n\`\`\`${se}\n${text}\n\`\`\`\n`],{type:'text/plain'}),name:stem+'.md'};
-  if(de==='pdf'){const b=await txtToPdf(text,file.name);return{blob:b,name:stem+'.pdf'};}
-  if(de==='docx'){const b=await txtToDocx(text,file.name);return{blob:b,name:stem+'.docx'};}
-  return{blob:new Blob([text],{type:'text/plain'}),name:stem+'.'+de};
-}
-
-// ── Markdown ──────────────────────────────
-async function convMd(file,de){
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const text=await readText(file);
-  const html=text.replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^# (.+)$/gm,'<h1>$1</h1>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\*(.+?)\*/g,'<em>$1</em>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\[(.+?)\]\((.+?)\)/g,'<a href="$2">$1</a>');
-  const full=`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;max-width:800px;margin:2rem auto;line-height:1.7}code{background:#f4f4f4;padding:.2em .4em;border-radius:3px}pre{background:#f4f4f4;padding:1rem;border-radius:6px;overflow:auto}</style></head><body>${html}</body></html>`;
-  if(de==='html')return{blob:new Blob([full],{type:'text/html'}),name:stem+'.html'};
-  if(de==='txt')return{blob:new Blob([text],{type:'text/plain'}),name:stem+'.txt'};
-  if(de==='pdf'){const b=await txtToPdf(text,file.name);return{blob:b,name:stem+'.pdf'};}
-  if(de==='docx'){const b=await txtToDocx(text,file.name);return{blob:b,name:stem+'.docx'};}
-  return{blob:new Blob([text],{type:'text/plain'}),name:stem+'.'+de};
-}
-
-// ── HTML ──────────────────────────────────
-async function convHtml(file,de){
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const text=await readText(file);
-  const plain=(()=>{const d=document.createElement('div');d.innerHTML=text;return d.textContent||'';})();
-  if(de==='txt')return{blob:new Blob([plain],{type:'text/plain'}),name:stem+'.txt'};
-  if(de==='md')return{blob:new Blob([`# Converti depuis HTML\n\n${plain}`],{type:'text/plain'}),name:stem+'.md'};
-  if(de==='pdf'){const b=await txtToPdf(plain,file.name);return{blob:b,name:stem+'.pdf'};}
-  return{blob:new Blob([text],{type:'text/html'}),name:stem+'.html'};
-}
-
-// ── DOCX ──────────────────────────────────
-async function convDocx(file,de){
-  if(typeof mammoth==='undefined')throw new Error('mammoth.js non disponible (CDN)');
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const ab=await readBuf(file);
-  if(de==='html'){const r=await mammoth.convertToHtml({arrayBuffer:ab});return{blob:new Blob([`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;max-width:800px;margin:2rem auto;line-height:1.7}</style></head><body>${r.value}</body></html>`],{type:'text/html'}),name:stem+'.html'};}
-  const r=await mammoth.extractRawText({arrayBuffer:ab});
-  if(de==='txt')return{blob:new Blob([r.value],{type:'text/plain'}),name:stem+'.txt'};
-  if(de==='md')return{blob:new Blob([`# ${stem}\n\n${r.value}`],{type:'text/plain'}),name:stem+'.md'};
-  if(de==='pdf'){const b=await txtToPdf(r.value,file.name);return{blob:b,name:stem+'.pdf'};}
-  throw new Error(`DOCX → .${de} non supporté`);
-}
-
-// ── XLSX/XLS ──────────────────────────────
-async function convXlsx(file,de){
-  if(typeof XLSX==='undefined')throw new Error('SheetJS non disponible (CDN)');
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const ab=await readBuf(file);
-  const wb=XLSX.read(ab,{type:'array'});const ws=wb.Sheets[wb.SheetNames[0]];
-  if(de==='csv')return{blob:new Blob([XLSX.utils.sheet_to_csv(ws)],{type:'text/csv'}),name:stem+'.csv'};
-  if(de==='json'){const d=XLSX.utils.sheet_to_json(ws,{defval:''});return{blob:new Blob([JSON.stringify(d,null,2)],{type:'application/json'}),name:stem+'.json'};}
-  if(de==='html')return{blob:new Blob([XLSX.utils.sheet_to_html(ws)],{type:'text/html'}),name:stem+'.html'};
-  if(de==='txt')return{blob:new Blob([XLSX.utils.sheet_to_csv(ws).replace(/,/g,'\t')],{type:'text/plain'}),name:stem+'.txt'};
-  if(de==='pdf'){const b=await txtToPdf(XLSX.utils.sheet_to_csv(ws),file.name);return{blob:b,name:stem+'.pdf'};}
-  if(de==='xlsx'||de==='xls'){const out=XLSX.write(wb,{bookType:de,type:'array'});return{blob:new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),name:stem+'.'+de};}
-  throw new Error(`Excel → .${de} non supporté`);
-}
-
-// ── CSV ───────────────────────────────────
-async function convCsv(file,de){
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const text=await readText(file);
-  if(de==='json'){
-    const lines=text.split('\n').filter(l=>l.trim());if(!lines.length)return{blob:new Blob(['[]'],{type:'application/json'}),name:stem+'.json'};
-    const h=lines[0].split(',').map(v=>v.trim().replace(/^"|"$/g,''));
-    const rows=lines.slice(1).map(l=>{const v=l.split(',').map(v=>v.trim().replace(/^"|"$/g,''));return Object.fromEntries(h.map((k,i)=>[k,v[i]||'']));});
-    return{blob:new Blob([JSON.stringify(rows,null,2)],{type:'application/json'}),name:stem+'.json'};
-  }
-  if(de==='xlsx'||de==='xls'){
-    if(typeof XLSX==='undefined')throw new Error('SheetJS non disponible');
-    const ws=XLSX.utils.aoa_to_sheet(text.split('\n').map(l=>l.split(',')));
-    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Sheet1');
-    const out=XLSX.write(wb,{bookType:de,type:'array'});
-    return{blob:new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),name:stem+'.'+de};
-  }
-  if(de==='html'){
-    const rows=text.split('\n').filter(l=>l.trim()).map(l=>l.split(','));
-    const tb=rows.map((r,i)=>`<tr>${r.map(c=>`<t${i?'d':'h'} style="border:1px solid #ddd;padding:6px;${i?'':'background:#333;color:#fff'}">${esc(c.replace(/^"|"$/g,''))}</t${i?'d':'h'}>`).join('')}</tr>`).join('');
-    return{blob:new Blob([`<!DOCTYPE html><html><head><meta charset="utf-8"><style>table{border-collapse:collapse;font-family:sans-serif}</style></head><body><table>${tb}</table></body></html>`],{type:'text/html'}),name:stem+'.html'};
-  }
-  if(de==='txt')return{blob:new Blob([text.replace(/,/g,'\t')],{type:'text/plain'}),name:stem+'.txt'};
-  if(de==='pdf'){const b=await txtToPdf(text,file.name);return{blob:b,name:stem+'.pdf'};}
-  throw new Error(`CSV → .${de} non supporté`);
-}
-
-// ── JSON ──────────────────────────────────
-async function convJson(file,de){
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const text=await readText(file);
-  let data;try{data=JSON.parse(text);}catch(e){throw new Error('JSON invalide');}
-  const yamlStr=obj=>{
-    if(obj===null)return'null';if(typeof obj==='boolean'||typeof obj==='number')return String(obj);
-    if(typeof obj==='string')return obj;
-    if(Array.isArray(obj))return obj.map((v,i)=>`- ${yamlStr(v)}`).join('\n');
-    return Object.entries(obj).map(([k,v])=>typeof v==='object'&&v!==null?`${k}:\n${String(yamlStr(v)).split('\n').map(l=>'  '+l).join('\n')}`:`${k}: ${yamlStr(v)}`).join('\n');
-  };
-  if(de==='yaml')return{blob:new Blob([yamlStr(data)],{type:'text/yaml'}),name:stem+'.yaml'};
-  if(de==='csv'){
-    const arr=Array.isArray(data)?data:[data];if(!arr.length||typeof arr[0]!=='object')return{blob:new Blob([JSON.stringify(data,null,2)],{type:'text/plain'}),name:stem+'.csv'};
-    const h=Object.keys(arr[0]);const rows=[h.join(','),...arr.map(r=>h.map(k=>`"${String(r[k]||'').replace(/"/g,'""')}"`).join(','))];
-    return{blob:new Blob([rows.join('\n')],{type:'text/csv'}),name:stem+'.csv'};
-  }
-  if(de==='xlsx'||de==='xls'){
-    if(typeof XLSX==='undefined')throw new Error('SheetJS non disponible');
-    const arr=Array.isArray(data)?data:[data];const ws=XLSX.utils.json_to_sheet(arr);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Sheet1');
-    const out=XLSX.write(wb,{bookType:de,type:'array'});return{blob:new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),name:stem+'.'+de};
-  }
-  if(de==='html')return{blob:new Blob([`<!DOCTYPE html><html><body><pre>${esc(JSON.stringify(data,null,2))}</pre></body></html>`],{type:'text/html'}),name:stem+'.html'};
-  if(de==='txt')return{blob:new Blob([JSON.stringify(data,null,2)],{type:'text/plain'}),name:stem+'.txt'};
-  if(de==='pdf'){const b=await txtToPdf(JSON.stringify(data,null,2),file.name);return{blob:b,name:stem+'.pdf'};}
-  throw new Error(`JSON → .${de} non supporté`);
-}
-
-// ── XML ───────────────────────────────────
-async function convXml(file,de){
-  const stem=file.name.replace(/\.[^.]+$/,'');const text=await readText(file);
-  if(de==='json'){
-    const p=new DOMParser(),doc=p.parseFromString(text,'text/xml');
-    function e2o(n){if(n.nodeType===3)return n.textContent.trim();const o={};for(const a of n.attributes||[])o['@'+a.name]=a.value;for(const c of n.childNodes){const k=c.nodeName,v=e2o(c);if(!v&&v!==0)continue;o[k]=o[k]?[].concat(o[k],v):v;}return o;}
-    return{blob:new Blob([JSON.stringify(e2o(doc.documentElement),null,2)],{type:'application/json'}),name:stem+'.json'};
-  }
-  if(de==='txt'){const d=document.createElement('div');d.innerHTML=text;return{blob:new Blob([d.textContent],{type:'text/plain'}),name:stem+'.txt'};}
-  if(de==='html')return{blob:new Blob([`<!DOCTYPE html><html><body><pre>${esc(text)}</pre></body></html>`],{type:'text/html'}),name:stem+'.html'};
-  throw new Error(`XML → .${de} non supporté`);
-}
-
-// ── ZIP ───────────────────────────────────
-async function convZip(file,de){
-  if(typeof JSZip==='undefined')throw new Error('JSZip non disponible');
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const ab=await readBuf(file);const zip=await JSZip.loadAsync(ab);
-  if(de==='txt'){return{blob:new Blob([Object.keys(zip.files).join('\n')],{type:'text/plain'}),name:stem+'.txt'};}
-  const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
-  return{blob,name:stem+'.zip'};
-}
-
-// ── Subtitles ─────────────────────────────
-async function convSub(file,se,de){
-  const stem=file.name.replace(/\.[^.]+$/,'');const text=await readText(file);
-  if(se==='srt'&&de==='vtt')return{blob:new Blob(['WEBVTT\n\n'+text.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g,'$1.$2')],{type:'text/vtt'}),name:stem+'.vtt'};
-  if(se==='vtt'&&de==='srt')return{blob:new Blob([text.replace(/WEBVTT\n\n/,'').replace(/(\d{2}:\d{2}:\d{2})\.(\d{3})/g,'$1,$2')],{type:'text/plain'}),name:stem+'.srt'};
-  if(de==='txt'){const pl=text.replace(/^\d+$/gm,'').replace(/\d{2}:\d{2}:\d{2}[,.].*$/gm,'').replace(/WEBVTT\n?/,'').replace(/\n{3,}/g,'\n\n').trim();return{blob:new Blob([pl],{type:'text/plain'}),name:stem+'.txt'};}
-  throw new Error(`Sous-titre → .${de} non supporté`);
-}
-
-// ── Config ────────────────────────────────
-async function convCfg(file,de){
-  const stem=file.name.replace(/\.[^.]+$/,'');const text=await readText(file);
-  const obj={};text.split('\n').forEach(l=>{l=l.trim();if(!l||l[0]==='#'||l[0]===';')return;const eq=l.indexOf('=');if(eq>0)obj[l.slice(0,eq).trim()]=l.slice(eq+1).trim();});
-  if(de==='json')return{blob:new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}),name:stem+'.json'};
-  if(de==='yaml')return{blob:new Blob([Object.entries(obj).map(([k,v])=>`${k}: ${v}`).join('\n')],{type:'text/yaml'}),name:stem+'.yaml'};
-  return{blob:new Blob([text],{type:'text/plain'}),name:stem+'.txt'};
-}
-
-// ── PDF helpers ───────────────────────────
-async function txtToPdf(text,title){
-  if(typeof PDFLib==='undefined')throw new Error('pdf-lib non disponible');
-  const {PDFDocument,rgb,StandardFonts}=PDFLib;
-  const doc=await PDFDocument.create();
-  const font=await doc.embedFont(StandardFonts.Helvetica);
-  const bold=await doc.embedFont(StandardFonts.HelveticaBold);
-  const W=595,H=842,M=50,LH=14;
-  let page=doc.addPage([W,H]),y=H-M;
-  page.drawText(title||'Document',{x:M,y,font:bold,size:13,color:rgb(0,.83,.87)});y-=LH*2;
-  for(const raw of text.split('\n')){
-    const chunks=raw.length>90?raw.match(/.{1,90}/g)||[raw]:[raw];
-    for(const chunk of chunks){
-      if(y<M){page=doc.addPage([W,H]);y=H-M;}
-      page.drawText(chunk,{x:M,y,font,size:10,color:rgb(.88,.91,.94)});y-=LH;
-    }
-  }
-  return new Blob([await doc.save()],{type:'application/pdf'});
-}
-async function txtToDocx(text,title){
-  // Minimal DOCX via XML (no lib needed)
-  const escXml=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const paras=text.split('\n').map(l=>`<w:p><w:r><w:t xml:space="preserve">${escXml(l)}</w:t></w:r></w:p>`).join('');
-  const docXml=`<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${paras}</w:body></w:document>`;
-  if(typeof JSZip==='undefined')throw new Error('JSZip non disponible pour DOCX');
-  const zip=new JSZip();
-  zip.file('[Content_Types].xml','<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
-  zip.folder('_rels').file('.rels','<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
-  zip.folder('word').file('document.xml',docXml);
-  zip.folder('word/_rels').file('document.xml.rels','<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>');
-  return await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
-}
-
-// ── Media (streaming, temps réel) ─────────
-function bestMime(){
-  const p=['audio/webm;codecs=opus','audio/webm;codecs=pcm','audio/webm','audio/ogg;codecs=opus','audio/ogg'];
-  return p.find(m=>{try{return MediaRecorder.isTypeSupported(m);}catch(e){return false;}})||'audio/webm';
-}
-function mediaWarning(file){
-  return new Promise(res=>{
-    const url=URL.createObjectURL(file);
-    const v=document.createElement('video');v.src=url;v.preload='metadata';
-    v.onloadedmetadata=()=>{
-      const dur=Math.round(v.duration||0);URL.revokeObjectURL(url);
-      const durStr=`${Math.floor(dur/60)}m${dur%60}s`;
-      document.getElementById('mw-name').textContent=file.name;
-      document.getElementById('mw-info').innerHTML=`Taille: <b>${(file.size/1048576).toFixed(1)} MB</b> — Durée: <b>${durStr}</b><br><span style="color:var(--warn)">La conversion prendra environ ${durStr} (temps réel).</span>`;
-      document.getElementById('mw-modal').classList.remove('hidden');
-      document.getElementById('mw-ok').textContent=`⚡ Continuer (${durStr})`;
-      document.getElementById('mw-ok').onclick=()=>{document.getElementById('mw-modal').classList.add('hidden');res(true);};
-      document.getElementById('mw-cancel').onclick=()=>{document.getElementById('mw-modal').classList.add('hidden');res(false);};
-    };
-    v.onerror=()=>{URL.revokeObjectURL(url);res(true);};v.load();
-  });
-}
-async function convMedia(file,de,cb){
-  const se=(file.name.split('.').pop()||'').toLowerCase();
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const vidExts=['mp4','avi','mkv','mov','flv','wmv','3gp','mpeg','mpg','m4v','webm'];
-  const audExts=['mp3','wav','ogg','flac','aac','m4a','opus','wma'];
-  const proceed=await mediaWarning(file);
-  if(!proceed)throw new Error('Annulé.');
-  let outExt=de;
-  if(vidExts.includes(de)){outExt='webm';log('Sortie vidéo → .webm (seul format navigateur)','warn');}
-  return new Promise((resolve,reject)=>{
-    const url=URL.createObjectURL(file);
-    const AudioCtx=window.AudioContext||window.webkitAudioContext;
-    const audioCtx=new AudioCtx();
-    const dest=audioCtx.createMediaStreamDestination();
-    const media=document.createElement(audExts.includes(se)?'audio':'video');
-    media.src=url;media.preload='auto';media.muted=false;
-    media.onerror=()=>{URL.revokeObjectURL(url);audioCtx.close();reject(new Error(`Format .${se} non supporté. Utilisez la version Python.`));};
-    media.onloadedmetadata=async()=>{
-      const duration=media.duration||0;
-      if(cb)cb(8,`Durée: ${Math.round(duration)}s`);
-      try{
-        const src=audioCtx.createMediaElementSource(media);
-        src.connect(dest);
-        const mime=bestMime();
-        const recorder=new MediaRecorder(dest.stream,{mimeType:mime});
-        const chunks=[];
-        recorder.ondataavailable=e=>{if(e.data&&e.data.size>0)chunks.push(e.data);};
-        recorder.onstop=async()=>{
-          URL.revokeObjectURL(url);await audioCtx.close();
-          if(cb)cb(99,'Finalisation…');
-          const outMime=outExt==='mp3'?'audio/mpeg':outExt==='ogg'?'audio/ogg':outExt==='aac'?'audio/aac':outExt==='wav'?'audio/wav':mime;
-          resolve({blob:new Blob(chunks,{type:outMime}),name:stem+'.'+outExt});
-        };
-        recorder.onerror=e=>{URL.revokeObjectURL(url);audioCtx.close();reject(new Error('Recorder: '+(e.error||'erreur')));};
-        recorder.start(500);
-        if(audioCtx.state==='suspended')await audioCtx.resume();
-        await media.play();
-        let prog=null;
-        if(duration>0)prog=setInterval(()=>{if(media.ended||media.paused)return;if(cb)cb(10+Math.round(media.currentTime/duration*87),`${Math.round(media.currentTime)}s / ${Math.round(duration)}s`);},800);
-        media.onended=()=>{if(prog)clearInterval(prog);setTimeout(()=>{try{recorder.stop();}catch(e){}},400);};
-      }catch(e){URL.revokeObjectURL(url);audioCtx.close();reject(new Error('Audio: '+e.message));}
-    };
-    media.load();
-  });
-}
-
-/* ════════════════════════════════════════════
-   MAIN DISPATCHER
-════════════════════════════════════════════ */
-async function convertFile(file,dstExt,cb=null){
-  const se=(file.name.split('.').pop()||'').toLowerCase();
-  const de=dstExt.toLowerCase().replace(/^\./,'');
-  const imgExts=['png','jpg','jpeg','bmp','gif','webp','tiff','tif','ico'];
-  const vidExts=['mp4','webm','avi','mkv','mov','flv','wmv','3gp','mpeg','mpg'];
-  const audExts=['mp3','wav','ogg','flac','aac','m4a','opus','wma'];
-
-  if(imgExts.includes(se)||(se==='svg'&&(imgExts.includes(de)||de==='svg'))
-     ||(imgExts.includes(se)&&de==='pdf')){
-    // SVG → raster
-    if(se==='svg'&&imgExts.includes(de)){
-      const stem=file.name.replace(/\.[^.]+$/,'');
-      const img=new Image(),url=URL.createObjectURL(file);
-      await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url;});
-      const cv=document.createElement('canvas');cv.width=img.naturalWidth||800;cv.height=img.naturalHeight||600;
-      const ctx=cv.getContext('2d');if(['jpg','jpeg'].includes(de)){ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);}
-      ctx.drawImage(img,0,0);URL.revokeObjectURL(url);
-      const m={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',bmp:'image/bmp'};
-      const blob=await new Promise(r=>cv.toBlob(r,m[de]||'image/png'));
-      return{blob,name:stem+'.'+de};
-    }
-    return convImg(file,de);
-  }
-  if(vidExts.includes(se)||audExts.includes(se)||vidExts.includes(de)||audExts.includes(de))return convMedia(file,de,cb);
-  if(['docx','doc'].includes(se))return convDocx(file,de);
-  if(['xlsx','xls'].includes(se))return convXlsx(file,de);
-  if(se==='csv')return convCsv(file,de);
-  if(se==='json')return convJson(file,de);
-  if(se==='xml')return convXml(file,de);
-  if(['zip','tar','gz'].includes(se))return convZip(file,de);
-  if(['srt','vtt'].includes(se))return convSub(file,se,de);
-  if(['ini','env','cfg'].includes(se))return convCfg(file,de);
-  if(se==='md')return convMd(file,de);
-  if(['html','htm'].includes(se))return convHtml(file,de);
-  return convText(file,se,de);
-}
-
-/* ════════════════════════════════════════════
-   CONVERT LOOP
-════════════════════════════════════════════ */
-async function startConvert(){
-  if(running)return;
-  if(!files.length){toast(T('noFile'),'warn');return;}
-  const ext=selExt||document.getElementById('mext').value.trim().replace(/^\./,'');
-  if(!ext){toast(T('noExt'),'warn');return;}
-  running=true;
-  document.getElementById('cvt-btn').disabled=true;
-  document.getElementById('lbl-cvt').textContent=T('cvting');
-  const total=files.length;let ok=0,err=0;
-  log(T('logS',{n:total,ext}),'info');
-  for(let i=0;i<files.length;i++){
-    const{file}=files[i];const t0=performance.now();
-    setProg(Math.round(i/total*100),file.name);
-    document.getElementById('prog-cnt').textContent=`${i+1}/${total}`;
-    const cb=(pct,msg)=>{setProg(Math.round(i/total*100+pct/total),msg);};
-    try{
-      const r=await convertFile(file,ext,cb);
-      const elapsed=((performance.now()-t0)/1000).toFixed(2);
-      const sz=fmtSz(r.blob.size);
-      saveAs(r.blob,r.name);
-      log(`OK  ${file.name}  →  ${r.name}  (${sz}, ${elapsed}s)`,'ok');
-      toast(`✓ ${r.name} (${sz})`,'ok',r.blob,r.name);ok++;
-    }catch(e){
-      log(`ERR ${file.name}  →  ${e.message}`,'err');
-      toast(`✗ ${file.name}: ${e.message}`,'err');err++;
-    }
-    await new Promise(r=>setTimeout(r,30));
-  }
-  setProg(100,T('ready'));document.getElementById('prog-cnt').textContent='';
-  log(T('logD',{ok,err,total}),err===0?'ok':'warn');
-  setStatus(err===0?T('ok',{n:ok}):T('partial',{ok,err}));
-  running=false;
-  document.getElementById('cvt-btn').disabled=false;
-  document.getElementById('lbl-cvt').textContent=T('cvt');
-  if(err===0)toast(T('ok',{n:ok}),'ok');else toast(T('partial',{ok,err}),'warn');
-}
-
-/* ════════════════════════════════════════════
-   YOUTUBE CONVERTER
-════════════════════════════════════════════ */
-let ytFmt='mp3', ytQuality='best', ytJobId=null, ytPollTimer=null;
-const YT_PORT=9731;
-const YT_BASE=`http://localhost:${YT_PORT}`;
-
-async function checkYTServer(){
-  try{
-    const r=await fetch(YT_BASE+'/ping',{signal:AbortSignal.timeout(2000)});
-    const d=await r.json();
-    const el=document.getElementById('yt-server-status');
-    if(d.status==='ok'){
-      el.textContent='✓ Serveur actif';el.style.color='var(--a3)';el.style.borderColor='var(--a3)';
-      document.getElementById('yt-offline-msg').style.display='none';
-      document.getElementById('yt-go').disabled=false;
-      if(!d.ffmpeg)ytSetStatus('⚠ ffmpeg absent — MP3/WAV/FLAC limités','var(--warn)');
-      return true;
-    }
-  }catch(e){}
-  const el=document.getElementById('yt-server-status');
-  el.textContent='✗ Serveur hors ligne';el.style.color='var(--err)';el.style.borderColor='var(--err)';
-  document.getElementById('yt-offline-msg').style.display='block';
-  document.getElementById('yt-go').disabled=true;
-  return false;
-}
-function showYT(){
-  document.getElementById('yt-modal').classList.remove('hidden');
-  document.getElementById('yt-url').focus();
-  checkYTServer();
-}
-function hideYT(){
-  document.getElementById('yt-modal').classList.add('hidden');
-  if(ytPollTimer){clearInterval(ytPollTimer);ytPollTimer=null;}
-}
-function setFmt(f){
-  ytFmt=f;
-  document.querySelectorAll('.fmt-btn').forEach(b=>b.classList.remove('act','act-red'));
-  const b=document.getElementById('fmt-'+f);if(b)b.classList.add(f==='mp4'?'act-red':'act');
-  const go=document.getElementById('yt-go');go.className='yt-go'+(f==='mp4'?' red':'');
-  document.getElementById('quality-wrap').style.display=f==='mp4'?'block':'none';
-}
-function setQuality(q){
-  ytQuality=q;
-  document.querySelectorAll('#quality-wrap .fmt-btn').forEach(b=>b.classList.remove('act'));
-  const b=document.getElementById('q-'+q);if(b)b.classList.add('act');
-}
-function ytSetStatus(msg,color='var(--muted)'){
-  const el=document.getElementById('yt-status');el.textContent=msg;el.style.color=color;
-}
-function ytSetProg(pct,msg){
-  document.getElementById('yt-prog-wrap').style.display='block';
-  document.getElementById('yt-prog-bar').style.width=pct+'%';
-  document.getElementById('yt-prog-pct').textContent=Math.round(pct)+'%';
-  if(msg)document.getElementById('yt-prog-msg').textContent=msg;
-}
-async function ytConvert(){
-  const url=document.getElementById('yt-url').value.trim();
-  if(!url||(!url.includes('youtube.com')&&!url.includes('youtu.be'))){
-    document.getElementById('yt-url').style.borderColor='var(--err)';
-    setTimeout(()=>document.getElementById('yt-url').style.borderColor='',1500);
-    ytSetStatus('⚠ Lien YouTube invalide','var(--err)');return;
-  }
-  const online=await checkYTServer();
-  if(!online)return;
-  ytJobId='job_'+Date.now();
-  document.getElementById('yt-go').disabled=true;
-  ytSetProg(0,'Démarrage…');ytSetStatus('');
-  try{
-    const resp=await fetch(YT_BASE+'/convert',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({url,format:ytFmt,quality:ytQuality,id:ytJobId}),
-    });
-    const data=await resp.json();
-    if(data.status==='started'){ytSetStatus('Conversion lancée…','var(--accent)');ytPollProgress();}
-    else throw new Error(data.error||'Erreur démarrage');
-  }catch(e){
-    ytSetStatus('✗ '+e.message,'var(--err)');
-    document.getElementById('yt-go').disabled=false;
-    document.getElementById('yt-prog-wrap').style.display='none';
-  }
-}
-function ytPollProgress(){
-  if(ytPollTimer)clearInterval(ytPollTimer);
-  ytPollTimer=setInterval(async()=>{
-    try{
-      const r=await fetch(`${YT_BASE}/progress?id=${ytJobId}`);
-      const d=await r.json();
-      ytSetProg(d.progress||0,d.msg||'');
-      if(d.status==='done'){
-        clearInterval(ytPollTimer);ytPollTimer=null;
-        ytSetStatus(`✓ ${d.filename} (${(d.size/1048576).toFixed(1)} MB)`,'var(--a3)');
-        ytSetProg(100,'✓ Téléchargement…');
-        await ytDownloadFile(ytJobId,d.filename);
-        toast(`✓ YouTube → ${d.filename}`,'ok');
-        log(`YouTube OK: ${d.filename}`,'ok');
-        document.getElementById('yt-go').disabled=false;
-      }else if(d.status==='error'){
-        clearInterval(ytPollTimer);ytPollTimer=null;
-        ytSetStatus('✗ '+d.msg,'var(--err)');ytSetProg(0,'Erreur');
-        document.getElementById('yt-go').disabled=false;
-        log('YouTube ERR: '+d.msg,'err');
-      }
-    }catch(e){
-      clearInterval(ytPollTimer);ytPollTimer=null;
-      ytSetStatus('✗ Connexion perdue','var(--err)');
-      document.getElementById('yt-go').disabled=false;
-    }
-  },800);
-}
-async function ytDownloadFile(jobId,filename){
-  try{
-    const resp=await fetch(YT_BASE+'/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:jobId})});
-    saveAs(await resp.blob(),filename);
-  }catch(e){ytSetStatus('✗ Erreur téléchargement: '+e.message,'var(--err)');}
-}
-document.getElementById('yt-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)hideYT();});
-document.getElementById('yt-url').addEventListener('keydown',e=>{if(e.key==='Enter')ytConvert();});
-
-
-/* ════════════════════════════════════════════
-   I18N — 15 LANGUES
-════════════════════════════════════════════ */
-const I18N = {
-  fr:{src:"FICHIERS SOURCE",drag:"ou glisser-déposer →",drop:"Déposer ici",empty:"Aucun fichier",add:"Ajouter",clear:"Vider",out:"SORTIE",outInfo:"Fichiers convertis téléchargés automatiquement.",fmt:"FORMAT CIBLE",manual:"Ext. manuelle :",cvt:"CONVERTIR",cvting:"EN COURS…",log:"JOURNAL",lang:"LANGUE",ready:"Prêt.",noFile:"Aucun fichier.",noExt:"Choisissez un format.",ok:"{n} converti(s) ✓",partial:"{ok} OK, {err} erreur(s).",logS:"=== {n} fichier(s) → .{ext} ===",logD:"=== Terminé {ok} OK / {err} err / {total} ===",cp:"📄 Copier",cl:"🗑 Effacer",dl:"Télécharger",nf:"{n} fichier(s)"},
-  en:{src:"SOURCE FILES",drag:"or drag & drop →",drop:"Drop here",empty:"No files",add:"Add",clear:"Clear",out:"OUTPUT",outInfo:"Converted files auto-downloaded.",fmt:"TARGET FORMAT",manual:"Manual ext:",cvt:"CONVERT",cvting:"CONVERTING…",log:"LOG",lang:"LANGUAGE",ready:"Ready.",noFile:"No file.",noExt:"Choose a format.",ok:"{n} converted ✓",partial:"{ok} OK, {err} error(s).",logS:"=== {n} file(s) → .{ext} ===",logD:"=== Done {ok} OK / {err} err / {total} ===",cp:"📄 Copy",cl:"🗑 Clear",dl:"Download",nf:"{n} file(s)"},
-  es:{src:"ARCHIVOS FUENTE",drag:"o arrastrar →",drop:"Soltar aquí",empty:"Sin archivos",add:"Añadir",clear:"Vaciar",out:"SALIDA",outInfo:"Archivos convertidos descargados automáticamente.",fmt:"FORMATO DESTINO",manual:"Ext. manual:",cvt:"CONVERTIR",cvting:"EN CURSO…",log:"REGISTRO",lang:"IDIOMA",ready:"Listo.",noFile:"Sin archivo.",noExt:"Elige un formato.",ok:"{n} convertido(s) ✓",partial:"{ok} OK, {err} error(es).",logS:"=== {n} → .{ext} ===",logD:"=== {ok} OK / {err} err / {total} ===",cp:"📄 Copiar",cl:"🗑 Borrar",dl:"Descargar",nf:"{n} archivo(s)"},
-  de:{src:"QUELLDATEIEN",drag:"drag & drop →",drop:"Hier ablegen",empty:"Keine Dateien",add:"Hinzufügen",clear:"Leeren",out:"AUSGABE",outInfo:"Konvertierte Dateien werden heruntergeladen.",fmt:"ZIELFORMAT",manual:"Erweiterung:",cvt:"KONVERTIEREN",cvting:"LÄUFT…",log:"PROTOKOLL",lang:"SPRACHE",ready:"Bereit.",noFile:"Keine Datei.",noExt:"Zielformat wählen.",ok:"{n} konvertiert ✓",partial:"{ok} OK, {err} Fehler.",logS:"=== {n} → .{ext} ===",logD:"=== {ok} OK / {err} Fehler / {total} ===",cp:"📄 Kopieren",cl:"🗑 Löschen",dl:"Herunterladen",nf:"{n} Datei(en)"},
-  it:{src:"FILE SORGENTE",drag:"o trascina →",drop:"Rilascia qui",empty:"Nessun file",add:"Aggiungi",clear:"Svuota",out:"OUTPUT",outInfo:"File convertiti scaricati automaticamente.",fmt:"FORMATO DEST.",manual:"Est. manuale:",cvt:"CONVERTI",cvting:"IN CORSO…",log:"REGISTRO",lang:"LINGUA",ready:"Pronto.",noFile:"Nessun file.",noExt:"Scegli un formato.",ok:"{n} convertiti ✓",partial:"{ok} OK, {err} errore/i.",logS:"=== {n} → .{ext} ===",logD:"=== {ok} OK / {err} err / {total} ===",cp:"📄 Copia",cl:"🗑 Cancella",dl:"Scarica",nf:"{n} file"},
-  pt:{src:"ARQUIVOS FONTE",drag:"ou arrastar →",drop:"Soltar aqui",empty:"Sem arquivos",add:"Adicionar",clear:"Limpar",out:"SAÍDA",outInfo:"Arquivos convertidos baixados automaticamente.",fmt:"FORMATO ALVO",manual:"Ext. manual:",cvt:"CONVERTER",cvting:"CONVERTENDO…",log:"LOG",lang:"IDIOMA",ready:"Pronto.",noFile:"Nenhum arquivo.",noExt:"Escolha um formato.",ok:"{n} convertido(s) ✓",partial:"{ok} OK, {err} erro(s).",logS:"=== {n} → .{ext} ===",logD:"=== {ok} OK / {err} err / {total} ===",cp:"📄 Copiar",cl:"🗑 Limpar",dl:"Baixar",nf:"{n} arquivo(s)"},
-  ru:{src:"ИСХОДНЫЕ ФАЙЛЫ",drag:"или перетащите →",drop:"Отпустите здесь",empty:"Нет файлов",add:"Добавить",clear:"Очистить",out:"ВЫВОД",outInfo:"Конвертированные файлы загрузятся автоматически.",fmt:"ЦЕЛЕВОЙ ФОРМАТ",manual:"Расширение:",cvt:"КОНВЕРТИРОВАТЬ",cvting:"В ПРОЦЕССЕ…",log:"ЖУРНАЛ",lang:"ЯЗЫК",ready:"Готово.",noFile:"Файл не выбран.",noExt:"Выберите формат.",ok:"{n} конвертировано ✓",partial:"{ok} OK, {err} ошибок.",logS:"=== {n} → .{ext} ===",logD:"=== {ok} OK / {err} / {total} ===",cp:"📄 Копировать",cl:"🗑 Очистить",dl:"Скачать",nf:"{n} файл(ов)"},
-  zh:{src:"源文件",drag:"或拖放 →",drop:"拖放到这里",empty:"无文件",add:"添加",clear:"清空",out:"输出",outInfo:"转换后的文件将自动下载。",fmt:"目标格式",manual:"手动扩展名：",cvt:"转换",cvting:"转换中…",log:"日志",lang:"语言",ready:"就绪。",noFile:"未选择文件。",noExt:"请选择格式。",ok:"{n} 转换成功 ✓",partial:"{ok} 成功, {err} 错误。",logS:"=== {n} → .{ext} ===",logD:"=== {ok} OK / {err} / {total} ===",cp:"📄 复制",cl:"🗑 清除",dl:"下载",nf:"{n} 个文件"},
-  ja:{src:"ソースファイル",drag:"またはドラッグ →",drop:"ここにドロップ",empty:"ファイルなし",add:"追加",clear:"クリア",out:"出力",outInfo:"変換されたファイルは自動的にダウンロードされます。",fmt:"ターゲット形式",manual:"手動拡張子：",cvt:"変換",cvting:"変換中…",log:"ログ",lang:"言語",ready:"準備完了。",noFile:"ファイルなし。",noExt:"形式を選択。",ok:"{n} 変換完了 ✓",partial:"{ok} 成功, {err} エラー。",logS:"=== {n} → .{ext} ===",logD:"=== {ok} OK / {err} / {total} ===",cp:"📄 コピー",cl:"🗑 クリア",dl:"ダウンロード",nf:"{n} ファイル"},
-  ar:{src:"الملفات المصدر",drag:"أو اسحب →",drop:"أفلت هنا",empty:"لا ملفات",add:"إضافة",clear:"مسح",out:"الإخراج",outInfo:"سيتم تنزيل الملفات المحولة تلقائياً.",fmt:"الصيغة المستهدفة",manual:"الامتداد:",cvt:"تحويل",cvting:"جارٍ…",log:"السجل",lang:"اللغة",ready:"جاهز.",noFile:"لا ملف.",noExt:"اختر صيغة.",ok:"{n} تم تحويله ✓",partial:"{ok} ناجح، {err} خطأ.",logS:"=== {n} → .{ext} ===",logD:"=== {ok} / {err} / {total} ===",cp:"📄 نسخ",cl:"🗑 مسح",dl:"تنزيل",nf:"{n} ملف"},
-  ko:{src:"소스 파일",drag:"또는 드래그 →",drop:"여기에 놓기",empty:"파일 없음",add:"추가",clear:"지우기",out:"출력",outInfo:"변환된 파일은 자동으로 다운로드됩니다.",fmt:"대상 형식",manual:"수동 확장자:",cvt:"변환",cvting:"변환 중…",log:"로그",lang:"언어",ready:"준비됨.",noFile:"파일 없음.",noExt:"형식 선택.",ok:"{n}개 변환 ✓",partial:"{ok} OK, {err} 오류.",logS:"=== {n} → .{ext} ===",logD:"=== {ok} / {err} / {total} ===",cp:"📄 복사",cl:"🗑 지우기",dl:"다운로드",nf:"{n} 파일"},
-  nl:{src:"BRONBESTANDEN",drag:"of slepen →",drop:"Hier neerzetten",empty:"Geen bestanden",add:"Toevoegen",clear:"Wissen",out:"UITVOER",outInfo:"Geconverteerde bestanden worden gedownload.",fmt:"DOELFORMAAT",manual:"Extensie:",cvt:"CONVERTEREN",cvting:"BEZIG…",log:"LOGBOEK",lang:"TAAL",ready:"Klaar.",noFile:"Geen bestand.",noExt:"Kies een formaat.",ok:"{n} geconverteerd ✓",partial:"{ok} OK, {err} fout(en).",logS:"=== {n} → .{ext} ===",logD:"=== {ok} / {err} / {total} ===",cp:"📄 Kopiëren",cl:"🗑 Wissen",dl:"Downloaden",nf:"{n} bestand(en)"},
-  pl:{src:"PLIKI ŹRÓDŁOWE",drag:"lub przeciągnij →",drop:"Upuść tutaj",empty:"Brak plików",add:"Dodaj",clear:"Wyczyść",out:"WYJŚCIE",outInfo:"Skonwertowane pliki zostaną pobrane.",fmt:"FORMAT DOCELOWY",manual:"Rozszerzenie:",cvt:"KONWERTUJ",cvting:"W TOKU…",log:"DZIENNIK",lang:"JĘZYK",ready:"Gotowy.",noFile:"Brak pliku.",noExt:"Wybierz format.",ok:"{n} przekonwertowanych ✓",partial:"{ok} OK, {err} błąd(ów).",logS:"=== {n} → .{ext} ===",logD:"=== {ok} / {err} / {total} ===",cp:"📄 Kopiuj",cl:"🗑 Wyczyść",dl:"Pobierz",nf:"{n} plik(ów)"},
-  tr:{src:"KAYNAK DOSYALAR",drag:"veya sürükle →",drop:"Buraya bırak",empty:"Dosya yok",add:"Ekle",clear:"Temizle",out:"ÇIKTI",outInfo:"Dönüştürülen dosyalar otomatik indirilecek.",fmt:"HEDEF FORMAT",manual:"Uzantı:",cvt:"DÖNÜŞTÜR",cvting:"DEVAM EDİYOR…",log:"GÜNLÜK",lang:"DİL",ready:"Hazır.",noFile:"Dosya yok.",noExt:"Format seçin.",ok:"{n} dönüştürüldü ✓",partial:"{ok} OK, {err} hata.",logS:"=== {n} → .{ext} ===",logD:"=== {ok} / {err} / {total} ===",cp:"📄 Kopyala",cl:"🗑 Temizle",dl:"İndir",nf:"{n} dosya"},
-  sv:{src:"KÄLLFILER",drag:"eller dra →",drop:"Släpp här",empty:"Inga filer",add:"Lägg till",clear:"Rensa",out:"UTDATA",outInfo:"Konverterade filer laddas ned automatiskt.",fmt:"MÅLFORMAT",manual:"Tillägg:",cvt:"KONVERTERA",cvting:"PÅGÅR…",log:"LOGG",lang:"SPRÅK",ready:"Redo.",noFile:"Ingen fil.",noExt:"Välj format.",ok:"{n} konverterade ✓",partial:"{ok} OK, {err} fel.",logS:"=== {n} → .{ext} ===",logD:"=== {ok} / {err} / {total} ===",cp:"📄 Kopiera",cl:"🗑 Rensa",dl:"Ladda ned",nf:"{n} fil(er)"},
-};
-let LANG='fr';
-const T=(k,v={})=>{let s=(I18N[LANG]||I18N.fr)[k]||k;for(const[a,b]of Object.entries(v))s=s.replaceAll(`{${a}}`,b);return s;};
-
-/* ════════════════════════════════════════════
-   FORMAT CATALOGUE
-════════════════════════════════════════════ */
-const CATS={
-  image:   {label:'🖼 Images',   color:'var(--img)', exts:['png','jpg','jpeg','bmp','gif','webp','tiff','ico','svg']},
-  video:   {label:'🎬 Vidéo',    color:'var(--vid)', exts:['mp4','webm','avi','mkv','mov','flv','wmv','3gp','mpeg']},
-  audio:   {label:'🎵 Audio',    color:'var(--aud)', exts:['mp3','wav','ogg','flac','aac','m4a','opus','wma']},
-  document:{label:'📄 Documents',color:'var(--doc)', exts:['txt','md','html','pdf','docx','xlsx','csv','xls']},
-  data:    {label:'📊 Données',  color:'var(--dat)', exts:['json','xml','yaml','toml','ini','env','cfg']},
-  archive: {label:'📦 Archives', color:'var(--arc)', exts:['zip','tar','gz']},
-  code:    {label:'💻 Code',     color:'var(--cod)', exts:['py','js','ts','css','sql','sh','bat']},
-  subtitle:{label:'💬 Sous-titres',color:'var(--sub)',exts:['srt','vtt']},
-};
-const CAT_OF={};
-for(const[cat,d]of Object.entries(CATS))for(const e of d.exts)CAT_OF[e]=cat;
-
-/* ════════════════════════════════════════════
-   STATE
-════════════════════════════════════════════ */
-let files=[],fid=0,selExt='',running=false,logLines=[];
-
-/* ════════════════════════════════════════════
-   CANVAS BACKGROUND
-════════════════════════════════════════════ */
-(()=>{
-  const cv=document.getElementById('bg-canvas'),ctx=cv.getContext('2d');
-  let W,H,P=[];
-  const resize=()=>{W=cv.width=innerWidth;H=cv.height=innerHeight;};
-  resize();addEventListener('resize',resize);
-  for(let i=0;i<65;i++)P.push({x:Math.random()*1920,y:Math.random()*1080,vx:(Math.random()-.5)*.22,vy:(Math.random()-.5)*.22,r:Math.random()*1.2+.4,c:Math.random()<.5?'#00d4ff':'#7c3aed',l:Math.random()*6.28});
-  function draw(){
-    ctx.clearRect(0,0,W,H);
-    P.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.l+=.003;if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;
-      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle=p.c;ctx.globalAlpha=Math.sin(p.l)*.3+.07;ctx.fill();});
-    ctx.globalAlpha=1;
-    for(let i=0;i<P.length;i++)for(let j=i+1;j<P.length;j++){
-      const dx=P[i].x-P[j].x,dy=P[i].y-P[j].y,d=Math.sqrt(dx*dx+dy*dy);
-      if(d<85){ctx.beginPath();ctx.moveTo(P[i].x,P[i].y);ctx.lineTo(P[j].x,P[j].y);ctx.strokeStyle='#00d4ff';ctx.globalAlpha=(1-d/85)*.055;ctx.lineWidth=.4;ctx.stroke();}
-    }
-    ctx.globalAlpha=1;requestAnimationFrame(draw);
-  }draw();
-})();
-
-/* ════════════════════════════════════════════
-   FORMAT GRID
-════════════════════════════════════════════ */
-function buildGrid(){
-  const g=document.getElementById('cat-grid');g.innerHTML='';
-  for(const[cat,d]of Object.entries(CATS)){
-    const box=document.createElement('div');box.className='cbox';
-    const tit=document.createElement('div');tit.className='ctitle';tit.textContent=d.label;tit.style.color=d.color;box.appendChild(tit);
-    const exts=document.createElement('div');exts.className='cexts';
-    for(const ext of d.exts){
-      const b=document.createElement('button');b.className='eb';b.id='e-'+ext;b.textContent='.'+ext;
-      b.style.color=d.color;b.style.borderColor=d.color+'40';
-      b.onclick=()=>pickExt(ext);exts.appendChild(b);
-    }
-    box.appendChild(exts);g.appendChild(box);
-  }
-}
-function pickExt(ext){
-  document.querySelectorAll('.eb').forEach(b=>b.classList.remove('act'));
-  const b=document.getElementById('e-'+ext);
-  if(b){b.classList.add('act');const cat=CAT_OF[ext]||'image';b.style.background=CATS[cat]?.color||'var(--accent)';}
-  selExt=ext;document.getElementById('mext').value=ext;
-}
-document.getElementById('mext').addEventListener('input',function(){
-  const v=this.value.trim().toLowerCase().replace(/^\./,'');
-  selExt=v;
-  document.querySelectorAll('.eb').forEach(b=>b.classList.remove('act'));
-  const b=document.getElementById('e-'+v);if(b){b.classList.add('act');const cat=CAT_OF[v]||'image';b.style.background=CATS[cat]?.color||'var(--accent)';}
-});
-
-/* ════════════════════════════════════════════
-   FILE MANAGEMENT
-════════════════════════════════════════════ */
-const fmtSz=b=>b<1024?b+'B':b<1048576?(b/1024).toFixed(1)+'KB':(b/1048576).toFixed(2)+'MB';
-const getColor=ext=>{const cat=CAT_OF[(ext||'').toLowerCase().replace(/^\./,'')];return CATS[cat]?.color||'var(--accent)';};
-
-function renderFiles(){
-  const list=document.getElementById('file-list'),emp=document.getElementById('empty-state');
-  list.querySelectorAll('.fi').forEach(e=>e.remove());
-  if(!files.length){emp.style.display='flex';return;}
-  emp.style.display='none';
-  files.forEach(({file,id})=>{
-    const ext=file.name.split('.').pop()||'';
-    const el=document.createElement('div');el.className='fi';el.dataset.id=id;
-    el.innerHTML=`<div class="fdot" style="background:${getColor(ext)}"></div><div class="fname" title="${file.name}">${file.name}</div><div class="fsize">${fmtSz(file.size)}</div><button class="fdel" onclick="rmFile(${id})">✕</button>`;
-    el.onclick=e=>{if(!e.target.classList.contains('fdel')){document.querySelectorAll('.fi').forEach(i=>i.classList.remove('sel'));el.classList.add('sel');}};
-    list.appendChild(el);
-  });
-  updStats();
-}
-function updStats(){
-  const n=files.length,cats={};
-  files.forEach(({file})=>{const e=file.name.split('.').pop()||'';const c=CAT_OF[e]||'doc';cats[c]=(cats[c]||0)+1;});
-  document.getElementById('stat-bar').textContent=T('nf',{n})+'  '+Object.entries(cats).map(([k,v])=>`${v} ${k}`).join('  ');
-}
-function addFiles(fl){
-  for(const f of fl)if(!files.find(e=>e.file.name===f.name&&e.file.size===f.size))files.push({file:f,id:++fid});
-  renderFiles();
-}
-window.rmFile=id=>{files=files.filter(e=>e.id!==id);renderFiles();};
-function clearFiles(){files=[];renderFiles();}
-function pickFiles(){document.getElementById('file-input').click();}
-document.getElementById('file-input').onchange=e=>{addFiles(e.target.files);e.target.value='';};
-const dz=document.getElementById('drop-zone');
-dz.ondragover=e=>{e.preventDefault();dz.classList.add('drag');};
-dz.ondragleave=()=>dz.classList.remove('drag');
-dz.ondrop=e=>{e.preventDefault();dz.classList.remove('drag');addFiles(e.dataTransfer.files);};
-dz.onclick=e=>{if(!e.target.closest('.fi')&&!e.target.classList.contains('fdel'))pickFiles();};
-
-/* ════════════════════════════════════════════
-   LOG
-════════════════════════════════════════════ */
-function log(msg,type='info'){
-  const ts=new Date().toTimeString().slice(0,8);
-  logLines.push(`[${ts}] ${msg}`);
-  const c=document.getElementById('log-content');
-  const l=document.createElement('div');l.className='ll';
-  l.innerHTML=`<span class="lts">[${ts}]</span><span class="l${type}">${msg.replace(/</g,'&lt;')}</span>`;
-  c.appendChild(l);c.scrollTop=c.scrollHeight;
-}
-function clearLog(){logLines=[];document.getElementById('log-content').innerHTML='';}
-function copyLog(){navigator.clipboard?.writeText(logLines.join('\n'));setStatus('Journal copié ✓');}
-function setStatus(msg){document.getElementById('status-txt').textContent=msg;}
-function setProg(pct,lbl){
-  document.getElementById('prog-bar').style.width=Math.min(100,pct)+'%';
-  if(lbl)document.getElementById('prog-lbl').textContent=lbl;
-}
-function toast(msg,type='ok',blob=null,name=''){
-  const c=document.getElementById('toasts'),el=document.createElement('div');
-  el.className='toast '+type;el.innerHTML=`<span style="flex:1">${msg}</span>`;
-  if(blob&&name){const b=document.createElement('button');b.className='tdl';b.textContent=T('dl');b.onclick=()=>saveAs(blob,name);el.appendChild(b);}
-  c.appendChild(el);setTimeout(()=>el.remove(),8000);
-}
-
-/* ════════════════════════════════════════════
-   HELPERS
-════════════════════════════════════════════ */
-const readText=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsText(f,'UTF-8');});
-const readBuf=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsArrayBuffer(f);});
-const blobToUrl=b=>new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsDataURL(b);});
-const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
-/* ════════════════════════════════════════════
-   CONVERSIONS
-════════════════════════════════════════════ */
-
-// ── Image → Image/PDF/SVG ─────────────────
-async function convImg(file,de){
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  if(de==='svg'){
-    const blob=await convImg(file,'png');const du=await blobToUrl(blob);
-    const img=await new Promise((res,rej)=>{const i=new Image(),u=URL.createObjectURL(blob);i.onload=()=>{URL.revokeObjectURL(u);res(i);};i.onerror=rej;i.src=u;});
-    const svg=`<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${img.naturalWidth}" height="${img.naturalHeight}"><image xlink:href="${du}" width="${img.naturalWidth}" height="${img.naturalHeight}"/></svg>`;
-    return {blob:new Blob([svg],{type:'image/svg+xml'}),name:stem+'.svg'};
-  }
-  return new Promise((res,rej)=>{
-    const img=new Image(),url=URL.createObjectURL(file);
-    img.onload=async()=>{
-      const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;
-      const ctx=cv.getContext('2d');
-      if(['jpg','jpeg','bmp'].includes(de)){ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);}
-      ctx.drawImage(img,0,0);URL.revokeObjectURL(url);
-      if(de==='pdf'){
-        try{
-          const pb=await new Promise(r=>cv.toBlob(r,'image/png'));
-          const ab=await pb.arrayBuffer();
-          const doc=await PDFLib.PDFDocument.create();
-          const pi=await doc.embedPng(ab);
-          const {width:iw,height:ih}=pi.scale(1);
-          const pg=doc.addPage([iw,ih]);pg.drawImage(pi,{x:0,y:0,width:iw,height:ih});
-          const bytes=await doc.save();
-          res({blob:new Blob([bytes],{type:'application/pdf'}),name:stem+'.pdf'});
-        }catch(e){rej(e);}return;
-      }
-      const m={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',bmp:'image/bmp',tiff:'image/tiff',ico:'image/x-icon'};
-      const q=['jpg','jpeg','webp'].includes(de)?0.92:undefined;
-      cv.toBlob(b=>b?res({blob:b,name:stem+'.'+de}):rej(new Error('Canvas failed')),m[de]||'image/png',q);
-    };
-    img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('Image load failed'));};img.src=url;
-  });
-}
-
-// ── TXT/Code → html/md/pdf/txt ────────────
-async function convText(file,se,de){
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const text=await readText(file);
-  if(de==='html'){const h=`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:monospace;background:#0a0c10;color:#e2e8f0;padding:2rem}pre{background:#111520;border:1px solid #1e2535;border-radius:8px;padding:1.5rem;overflow:auto;white-space:pre-wrap}h1{color:#00d4ff;font-size:1rem;margin-bottom:1rem}</style></head><body><h1>${esc(file.name)}</h1><pre>${esc(text)}</pre></body></html>`;return{blob:new Blob([h],{type:'text/html'}),name:stem+'.html'};}
-  if(de==='md')return{blob:new Blob([`# ${file.name}\n\n\`\`\`${se}\n${text}\n\`\`\`\n`],{type:'text/plain'}),name:stem+'.md'};
-  if(de==='pdf'){const b=await txtToPdf(text,file.name);return{blob:b,name:stem+'.pdf'};}
-  if(de==='docx'){const b=await txtToDocx(text,file.name);return{blob:b,name:stem+'.docx'};}
-  return{blob:new Blob([text],{type:'text/plain'}),name:stem+'.'+de};
-}
-
-// ── Markdown ──────────────────────────────
-async function convMd(file,de){
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const text=await readText(file);
-  const html=text.replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^# (.+)$/gm,'<h1>$1</h1>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\*(.+?)\*/g,'<em>$1</em>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\[(.+?)\]\((.+?)\)/g,'<a href="$2">$1</a>');
-  const full=`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;max-width:800px;margin:2rem auto;line-height:1.7}code{background:#f4f4f4;padding:.2em .4em;border-radius:3px}pre{background:#f4f4f4;padding:1rem;border-radius:6px;overflow:auto}</style></head><body>${html}</body></html>`;
-  if(de==='html')return{blob:new Blob([full],{type:'text/html'}),name:stem+'.html'};
-  if(de==='txt')return{blob:new Blob([text],{type:'text/plain'}),name:stem+'.txt'};
-  if(de==='pdf'){const b=await txtToPdf(text,file.name);return{blob:b,name:stem+'.pdf'};}
-  if(de==='docx'){const b=await txtToDocx(text,file.name);return{blob:b,name:stem+'.docx'};}
-  return{blob:new Blob([text],{type:'text/plain'}),name:stem+'.'+de};
-}
-
-// ── HTML ──────────────────────────────────
-async function convHtml(file,de){
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const text=await readText(file);
-  const plain=(()=>{const d=document.createElement('div');d.innerHTML=text;return d.textContent||'';})();
-  if(de==='txt')return{blob:new Blob([plain],{type:'text/plain'}),name:stem+'.txt'};
-  if(de==='md')return{blob:new Blob([`# Converti depuis HTML\n\n${plain}`],{type:'text/plain'}),name:stem+'.md'};
-  if(de==='pdf'){const b=await txtToPdf(plain,file.name);return{blob:b,name:stem+'.pdf'};}
-  return{blob:new Blob([text],{type:'text/html'}),name:stem+'.html'};
-}
-
-// ── DOCX ──────────────────────────────────
-async function convDocx(file,de){
-  if(typeof mammoth==='undefined')throw new Error('mammoth.js non disponible (CDN)');
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const ab=await readBuf(file);
-  if(de==='html'){const r=await mammoth.convertToHtml({arrayBuffer:ab});return{blob:new Blob([`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;max-width:800px;margin:2rem auto;line-height:1.7}</style></head><body>${r.value}</body></html>`],{type:'text/html'}),name:stem+'.html'};}
-  const r=await mammoth.extractRawText({arrayBuffer:ab});
-  if(de==='txt')return{blob:new Blob([r.value],{type:'text/plain'}),name:stem+'.txt'};
-  if(de==='md')return{blob:new Blob([`# ${stem}\n\n${r.value}`],{type:'text/plain'}),name:stem+'.md'};
-  if(de==='pdf'){const b=await txtToPdf(r.value,file.name);return{blob:b,name:stem+'.pdf'};}
-  throw new Error(`DOCX → .${de} non supporté`);
-}
-
-// ── XLSX/XLS ──────────────────────────────
-async function convXlsx(file,de){
-  if(typeof XLSX==='undefined')throw new Error('SheetJS non disponible (CDN)');
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const ab=await readBuf(file);
-  const wb=XLSX.read(ab,{type:'array'});const ws=wb.Sheets[wb.SheetNames[0]];
-  if(de==='csv')return{blob:new Blob([XLSX.utils.sheet_to_csv(ws)],{type:'text/csv'}),name:stem+'.csv'};
-  if(de==='json'){const d=XLSX.utils.sheet_to_json(ws,{defval:''});return{blob:new Blob([JSON.stringify(d,null,2)],{type:'application/json'}),name:stem+'.json'};}
-  if(de==='html')return{blob:new Blob([XLSX.utils.sheet_to_html(ws)],{type:'text/html'}),name:stem+'.html'};
-  if(de==='txt')return{blob:new Blob([XLSX.utils.sheet_to_csv(ws).replace(/,/g,'\t')],{type:'text/plain'}),name:stem+'.txt'};
-  if(de==='pdf'){const b=await txtToPdf(XLSX.utils.sheet_to_csv(ws),file.name);return{blob:b,name:stem+'.pdf'};}
-  if(de==='xlsx'||de==='xls'){const out=XLSX.write(wb,{bookType:de,type:'array'});return{blob:new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),name:stem+'.'+de};}
-  throw new Error(`Excel → .${de} non supporté`);
-}
-
-// ── CSV ───────────────────────────────────
-async function convCsv(file,de){
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const text=await readText(file);
-  if(de==='json'){
-    const lines=text.split('\n').filter(l=>l.trim());if(!lines.length)return{blob:new Blob(['[]'],{type:'application/json'}),name:stem+'.json'};
-    const h=lines[0].split(',').map(v=>v.trim().replace(/^"|"$/g,''));
-    const rows=lines.slice(1).map(l=>{const v=l.split(',').map(v=>v.trim().replace(/^"|"$/g,''));return Object.fromEntries(h.map((k,i)=>[k,v[i]||'']));});
-    return{blob:new Blob([JSON.stringify(rows,null,2)],{type:'application/json'}),name:stem+'.json'};
-  }
-  if(de==='xlsx'||de==='xls'){
-    if(typeof XLSX==='undefined')throw new Error('SheetJS non disponible');
-    const ws=XLSX.utils.aoa_to_sheet(text.split('\n').map(l=>l.split(',')));
-    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Sheet1');
-    const out=XLSX.write(wb,{bookType:de,type:'array'});
-    return{blob:new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),name:stem+'.'+de};
-  }
-  if(de==='html'){
-    const rows=text.split('\n').filter(l=>l.trim()).map(l=>l.split(','));
-    const tb=rows.map((r,i)=>`<tr>${r.map(c=>`<t${i?'d':'h'} style="border:1px solid #ddd;padding:6px;${i?'':'background:#333;color:#fff'}">${esc(c.replace(/^"|"$/g,''))}</t${i?'d':'h'}>`).join('')}</tr>`).join('');
-    return{blob:new Blob([`<!DOCTYPE html><html><head><meta charset="utf-8"><style>table{border-collapse:collapse;font-family:sans-serif}</style></head><body><table>${tb}</table></body></html>`],{type:'text/html'}),name:stem+'.html'};
-  }
-  if(de==='txt')return{blob:new Blob([text.replace(/,/g,'\t')],{type:'text/plain'}),name:stem+'.txt'};
-  if(de==='pdf'){const b=await txtToPdf(text,file.name);return{blob:b,name:stem+'.pdf'};}
-  throw new Error(`CSV → .${de} non supporté`);
-}
-
-// ── JSON ──────────────────────────────────
-async function convJson(file,de){
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const text=await readText(file);
-  let data;try{data=JSON.parse(text);}catch(e){throw new Error('JSON invalide');}
-  const yamlStr=obj=>{
-    if(obj===null)return'null';if(typeof obj==='boolean'||typeof obj==='number')return String(obj);
-    if(typeof obj==='string')return obj;
-    if(Array.isArray(obj))return obj.map((v,i)=>`- ${yamlStr(v)}`).join('\n');
-    return Object.entries(obj).map(([k,v])=>typeof v==='object'&&v!==null?`${k}:\n${String(yamlStr(v)).split('\n').map(l=>'  '+l).join('\n')}`:`${k}: ${yamlStr(v)}`).join('\n');
-  };
-  if(de==='yaml')return{blob:new Blob([yamlStr(data)],{type:'text/yaml'}),name:stem+'.yaml'};
-  if(de==='csv'){
-    const arr=Array.isArray(data)?data:[data];if(!arr.length||typeof arr[0]!=='object')return{blob:new Blob([JSON.stringify(data,null,2)],{type:'text/plain'}),name:stem+'.csv'};
-    const h=Object.keys(arr[0]);const rows=[h.join(','),...arr.map(r=>h.map(k=>`"${String(r[k]||'').replace(/"/g,'""')}"`).join(','))];
-    return{blob:new Blob([rows.join('\n')],{type:'text/csv'}),name:stem+'.csv'};
-  }
-  if(de==='xlsx'||de==='xls'){
-    if(typeof XLSX==='undefined')throw new Error('SheetJS non disponible');
-    const arr=Array.isArray(data)?data:[data];const ws=XLSX.utils.json_to_sheet(arr);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Sheet1');
-    const out=XLSX.write(wb,{bookType:de,type:'array'});return{blob:new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),name:stem+'.'+de};
-  }
-  if(de==='html')return{blob:new Blob([`<!DOCTYPE html><html><body><pre>${esc(JSON.stringify(data,null,2))}</pre></body></html>`],{type:'text/html'}),name:stem+'.html'};
-  if(de==='txt')return{blob:new Blob([JSON.stringify(data,null,2)],{type:'text/plain'}),name:stem+'.txt'};
-  if(de==='pdf'){const b=await txtToPdf(JSON.stringify(data,null,2),file.name);return{blob:b,name:stem+'.pdf'};}
-  throw new Error(`JSON → .${de} non supporté`);
-}
-
-// ── XML ───────────────────────────────────
-async function convXml(file,de){
-  const stem=file.name.replace(/\.[^.]+$/,'');const text=await readText(file);
-  if(de==='json'){
-    const p=new DOMParser(),doc=p.parseFromString(text,'text/xml');
-    function e2o(n){if(n.nodeType===3)return n.textContent.trim();const o={};for(const a of n.attributes||[])o['@'+a.name]=a.value;for(const c of n.childNodes){const k=c.nodeName,v=e2o(c);if(!v&&v!==0)continue;o[k]=o[k]?[].concat(o[k],v):v;}return o;}
-    return{blob:new Blob([JSON.stringify(e2o(doc.documentElement),null,2)],{type:'application/json'}),name:stem+'.json'};
-  }
-  if(de==='txt'){const d=document.createElement('div');d.innerHTML=text;return{blob:new Blob([d.textContent],{type:'text/plain'}),name:stem+'.txt'};}
-  if(de==='html')return{blob:new Blob([`<!DOCTYPE html><html><body><pre>${esc(text)}</pre></body></html>`],{type:'text/html'}),name:stem+'.html'};
-  throw new Error(`XML → .${de} non supporté`);
-}
-
-// ── ZIP ───────────────────────────────────
-async function convZip(file,de){
-  if(typeof JSZip==='undefined')throw new Error('JSZip non disponible');
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const ab=await readBuf(file);const zip=await JSZip.loadAsync(ab);
-  if(de==='txt'){return{blob:new Blob([Object.keys(zip.files).join('\n')],{type:'text/plain'}),name:stem+'.txt'};}
-  const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
-  return{blob,name:stem+'.zip'};
-}
-
-// ── Subtitles ─────────────────────────────
-async function convSub(file,se,de){
-  const stem=file.name.replace(/\.[^.]+$/,'');const text=await readText(file);
-  if(se==='srt'&&de==='vtt')return{blob:new Blob(['WEBVTT\n\n'+text.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g,'$1.$2')],{type:'text/vtt'}),name:stem+'.vtt'};
-  if(se==='vtt'&&de==='srt')return{blob:new Blob([text.replace(/WEBVTT\n\n/,'').replace(/(\d{2}:\d{2}:\d{2})\.(\d{3})/g,'$1,$2')],{type:'text/plain'}),name:stem+'.srt'};
-  if(de==='txt'){const pl=text.replace(/^\d+$/gm,'').replace(/\d{2}:\d{2}:\d{2}[,.].*$/gm,'').replace(/WEBVTT\n?/,'').replace(/\n{3,}/g,'\n\n').trim();return{blob:new Blob([pl],{type:'text/plain'}),name:stem+'.txt'};}
-  throw new Error(`Sous-titre → .${de} non supporté`);
-}
-
-// ── Config ────────────────────────────────
-async function convCfg(file,de){
-  const stem=file.name.replace(/\.[^.]+$/,'');const text=await readText(file);
-  const obj={};text.split('\n').forEach(l=>{l=l.trim();if(!l||l[0]==='#'||l[0]===';')return;const eq=l.indexOf('=');if(eq>0)obj[l.slice(0,eq).trim()]=l.slice(eq+1).trim();});
-  if(de==='json')return{blob:new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}),name:stem+'.json'};
-  if(de==='yaml')return{blob:new Blob([Object.entries(obj).map(([k,v])=>`${k}: ${v}`).join('\n')],{type:'text/yaml'}),name:stem+'.yaml'};
-  return{blob:new Blob([text],{type:'text/plain'}),name:stem+'.txt'};
-}
-
-// ── PDF helpers ───────────────────────────
-async function txtToPdf(text,title){
-  if(typeof PDFLib==='undefined')throw new Error('pdf-lib non disponible');
-  const {PDFDocument,rgb,StandardFonts}=PDFLib;
-  const doc=await PDFDocument.create();
-  const font=await doc.embedFont(StandardFonts.Helvetica);
-  const bold=await doc.embedFont(StandardFonts.HelveticaBold);
-  const W=595,H=842,M=50,LH=14;
-  let page=doc.addPage([W,H]),y=H-M;
-  page.drawText(title||'Document',{x:M,y,font:bold,size:13,color:rgb(0,.83,.87)});y-=LH*2;
-  for(const raw of text.split('\n')){
-    const chunks=raw.length>90?raw.match(/.{1,90}/g)||[raw]:[raw];
-    for(const chunk of chunks){
-      if(y<M){page=doc.addPage([W,H]);y=H-M;}
-      page.drawText(chunk,{x:M,y,font,size:10,color:rgb(.88,.91,.94)});y-=LH;
-    }
-  }
-  return new Blob([await doc.save()],{type:'application/pdf'});
-}
-async function txtToDocx(text,title){
-  // Minimal DOCX via XML (no lib needed)
-  const escXml=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const paras=text.split('\n').map(l=>`<w:p><w:r><w:t xml:space="preserve">${escXml(l)}</w:t></w:r></w:p>`).join('');
-  const docXml=`<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${paras}</w:body></w:document>`;
-  if(typeof JSZip==='undefined')throw new Error('JSZip non disponible pour DOCX');
-  const zip=new JSZip();
-  zip.file('[Content_Types].xml','<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
-  zip.folder('_rels').file('.rels','<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
-  zip.folder('word').file('document.xml',docXml);
-  zip.folder('word/_rels').file('document.xml.rels','<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>');
-  return await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
-}
-
-// ── Media (streaming, temps réel) ─────────
-function bestMime(){
-  const p=['audio/webm;codecs=opus','audio/webm;codecs=pcm','audio/webm','audio/ogg;codecs=opus','audio/ogg'];
-  return p.find(m=>{try{return MediaRecorder.isTypeSupported(m);}catch(e){return false;}})||'audio/webm';
-}
-function mediaWarning(file){
-  return new Promise(res=>{
-    const url=URL.createObjectURL(file);
-    const v=document.createElement('video');v.src=url;v.preload='metadata';
-    v.onloadedmetadata=()=>{
-      const dur=Math.round(v.duration||0);URL.revokeObjectURL(url);
-      const durStr=`${Math.floor(dur/60)}m${dur%60}s`;
-      document.getElementById('mw-name').textContent=file.name;
-      document.getElementById('mw-info').innerHTML=`Taille: <b>${(file.size/1048576).toFixed(1)} MB</b> — Durée: <b>${durStr}</b><br><span style="color:var(--warn)">La conversion prendra environ ${durStr} (temps réel).</span>`;
-      document.getElementById('mw-modal').classList.remove('hidden');
-      document.getElementById('mw-ok').textContent=`⚡ Continuer (${durStr})`;
-      document.getElementById('mw-ok').onclick=()=>{document.getElementById('mw-modal').classList.add('hidden');res(true);};
-      document.getElementById('mw-cancel').onclick=()=>{document.getElementById('mw-modal').classList.add('hidden');res(false);};
-    };
-    v.onerror=()=>{URL.revokeObjectURL(url);res(true);};v.load();
-  });
-}
-async function convMedia(file,de,cb){
-  const se=(file.name.split('.').pop()||'').toLowerCase();
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const vidExts=['mp4','avi','mkv','mov','flv','wmv','3gp','mpeg','mpg','m4v','webm'];
-  const audExts=['mp3','wav','ogg','flac','aac','m4a','opus','wma'];
-  const proceed=await mediaWarning(file);
-  if(!proceed)throw new Error('Annulé.');
-  let outExt=de;
-  if(vidExts.includes(de)){outExt='webm';log('Sortie vidéo → .webm (seul format navigateur)','warn');}
-  return new Promise((resolve,reject)=>{
-    const url=URL.createObjectURL(file);
-    const AudioCtx=window.AudioContext||window.webkitAudioContext;
-    const audioCtx=new AudioCtx();
-    const dest=audioCtx.createMediaStreamDestination();
-    const media=document.createElement(audExts.includes(se)?'audio':'video');
-    media.src=url;media.preload='auto';media.muted=false;
-    media.onerror=()=>{URL.revokeObjectURL(url);audioCtx.close();reject(new Error(`Format .${se} non supporté. Utilisez la version Python.`));};
-    media.onloadedmetadata=async()=>{
-      const duration=media.duration||0;
-      if(cb)cb(8,`Durée: ${Math.round(duration)}s`);
-      try{
-        const src=audioCtx.createMediaElementSource(media);
-        src.connect(dest);
-        const mime=bestMime();
-        const recorder=new MediaRecorder(dest.stream,{mimeType:mime});
-        const chunks=[];
-        recorder.ondataavailable=e=>{if(e.data&&e.data.size>0)chunks.push(e.data);};
-        recorder.onstop=async()=>{
-          URL.revokeObjectURL(url);await audioCtx.close();
-          if(cb)cb(99,'Finalisation…');
-          const outMime=outExt==='mp3'?'audio/mpeg':outExt==='ogg'?'audio/ogg':outExt==='aac'?'audio/aac':outExt==='wav'?'audio/wav':mime;
-          resolve({blob:new Blob(chunks,{type:outMime}),name:stem+'.'+outExt});
-        };
-        recorder.onerror=e=>{URL.revokeObjectURL(url);audioCtx.close();reject(new Error('Recorder: '+(e.error||'erreur')));};
-        recorder.start(500);
-        if(audioCtx.state==='suspended')await audioCtx.resume();
-        await media.play();
-        let prog=null;
-        if(duration>0)prog=setInterval(()=>{if(media.ended||media.paused)return;if(cb)cb(10+Math.round(media.currentTime/duration*87),`${Math.round(media.currentTime)}s / ${Math.round(duration)}s`);},800);
-        media.onended=()=>{if(prog)clearInterval(prog);setTimeout(()=>{try{recorder.stop();}catch(e){}},400);};
-      }catch(e){URL.revokeObjectURL(url);audioCtx.close();reject(new Error('Audio: '+e.message));}
-    };
-    media.load();
-  });
-}
-
-/* ════════════════════════════════════════════
-   MAIN DISPATCHER
-════════════════════════════════════════════ */
-async function convertFile(file,dstExt,cb=null){
-  const se=(file.name.split('.').pop()||'').toLowerCase();
-  const de=dstExt.toLowerCase().replace(/^\./,'');
-  const imgExts=['png','jpg','jpeg','bmp','gif','webp','tiff','tif','ico'];
-  const vidExts=['mp4','webm','avi','mkv','mov','flv','wmv','3gp','mpeg','mpg'];
-  const audExts=['mp3','wav','ogg','flac','aac','m4a','opus','wma'];
-
-  if(imgExts.includes(se)||(se==='svg'&&(imgExts.includes(de)||de==='svg'))
-     ||(imgExts.includes(se)&&de==='pdf')){
-    // SVG → raster
-    if(se==='svg'&&imgExts.includes(de)){
-      const stem=file.name.replace(/\.[^.]+$/,'');
-      const img=new Image(),url=URL.createObjectURL(file);
-      await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url;});
-      const cv=document.createElement('canvas');cv.width=img.naturalWidth||800;cv.height=img.naturalHeight||600;
-      const ctx=cv.getContext('2d');if(['jpg','jpeg'].includes(de)){ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);}
-      ctx.drawImage(img,0,0);URL.revokeObjectURL(url);
-      const m={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',bmp:'image/bmp'};
-      const blob=await new Promise(r=>cv.toBlob(r,m[de]||'image/png'));
-      return{blob,name:stem+'.'+de};
-    }
-    return convImg(file,de);
-  }
-  if(vidExts.includes(se)||audExts.includes(se)||vidExts.includes(de)||audExts.includes(de))return convMedia(file,de,cb);
-  if(['docx','doc'].includes(se))return convDocx(file,de);
-  if(['xlsx','xls'].includes(se))return convXlsx(file,de);
-  if(se==='csv')return convCsv(file,de);
-  if(se==='json')return convJson(file,de);
-  if(se==='xml')return convXml(file,de);
-  if(['zip','tar','gz'].includes(se))return convZip(file,de);
-  if(['srt','vtt'].includes(se))return convSub(file,se,de);
-  if(['ini','env','cfg'].includes(se))return convCfg(file,de);
-  if(se==='md')return convMd(file,de);
-  if(['html','htm'].includes(se))return convHtml(file,de);
-  return convText(file,se,de);
-}
-
-/* ════════════════════════════════════════════
-   CONVERT LOOP
-════════════════════════════════════════════ */
-async function startConvert(){
-  if(running)return;
-  if(!files.length){toast(T('noFile'),'warn');return;}
-  const ext=selExt||document.getElementById('mext').value.trim().replace(/^\./,'');
-  if(!ext){toast(T('noExt'),'warn');return;}
-  running=true;
-  document.getElementById('cvt-btn').disabled=true;
-  document.getElementById('lbl-cvt').textContent=T('cvting');
-  const total=files.length;let ok=0,err=0;
-  log(T('logS',{n:total,ext}),'info');
-  for(let i=0;i<files.length;i++){
-    const{file}=files[i];const t0=performance.now();
-    setProg(Math.round(i/total*100),file.name);
-    document.getElementById('prog-cnt').textContent=`${i+1}/${total}`;
-    const cb=(pct,msg)=>{setProg(Math.round(i/total*100+pct/total),msg);};
-    try{
-      const r=await convertFile(file,ext,cb);
-      const elapsed=((performance.now()-t0)/1000).toFixed(2);
-      const sz=fmtSz(r.blob.size);
-      saveAs(r.blob,r.name);
-      log(`OK  ${file.name}  →  ${r.name}  (${sz}, ${elapsed}s)`,'ok');
-      toast(`✓ ${r.name} (${sz})`,'ok',r.blob,r.name);ok++;
-    }catch(e){
-      log(`ERR ${file.name}  →  ${e.message}`,'err');
-      toast(`✗ ${file.name}: ${e.message}`,'err');err++;
-    }
-    await new Promise(r=>setTimeout(r,30));
-  }
-  setProg(100,T('ready'));document.getElementById('prog-cnt').textContent='';
-  log(T('logD',{ok,err,total}),err===0?'ok':'warn');
-  setStatus(err===0?T('ok',{n:ok}):T('partial',{ok,err}));
-  running=false;
-  document.getElementById('cvt-btn').disabled=false;
-  document.getElementById('lbl-cvt').textContent=T('cvt');
-  if(err===0)toast(T('ok',{n:ok}),'ok');else toast(T('partial',{ok,err}),'warn');
-}
-
-/* ════════════════════════════════════════════
-   YOUTUBE CONVERTER
-════════════════════════════════════════════ */
-let ytFmt='mp3';
-let ytServerPort=9731;
-let ytServerOk=false;
-
-// ── Server detection ─────────────────────────────────────
-async function checkServer(){
-  const ports=[9731,9732,9733,9734,9735];
-  const dot=document.getElementById('yt-srv-dot');
-  const txt=document.getElementById('yt-srv-txt');
-  const guide=document.getElementById('yt-srv-guide');
-  txt.textContent='Recherche du serveur…';
-  dot.style.background='var(--warn)';
-  for(const p of ports){
-    try{
-      const r=await fetch(`http://127.0.0.1:${p}/ping`,{signal:AbortSignal.timeout(1500)});
-      if(r.ok){
-        const d=await r.json();
-        ytServerPort=p; ytServerOk=true;
-        dot.style.background='var(--a3)';
-        txt.textContent=`✓ Serveur connecté sur port ${p} — ${d.version||'Zenkari YT'}`;
-        guide.style.display='none';
-        document.getElementById('yt-dl-btn').disabled=false;
-        document.getElementById('yt-dl-btn').style.opacity='1';
-        return;
-      }
-    }catch(e){}
-  }
-  ytServerOk=false;
-  dot.style.background='var(--err)';
-  txt.textContent='✗ Serveur non trouvé — lance ZenkariYT_Server.py';
-  guide.style.display='block';
-  document.getElementById('yt-dl-btn').disabled=true;
-  document.getElementById('yt-dl-btn').style.opacity='.4';
-}
-
-function showYT(){
-  document.getElementById('yt-modal').classList.remove('hidden');
-  checkServer();
-}
-function hideYT(){document.getElementById('yt-modal').classList.add('hidden');}
-
-function setFmt(f){
-  ytFmt=f;
-  document.querySelectorAll('.fmt-btn').forEach(b=>b.classList.remove('act','act-red'));
-  const b=document.getElementById('fmt-'+f);
-  if(b)b.classList.add(f==='mp4'?'act-red':'act');
-  const btn=document.getElementById('yt-dl-btn');
-  btn.className='yt-go'+(f==='mp4'?' red':'');
-  btn.style.width='100%'; btn.style.padding='12px'; btn.style.fontSize='13px';
-}
-
-function ytStatus(msg,color='var(--muted)'){
-  const el=document.getElementById('yt-status');
-  el.style.color=color; el.textContent=msg;
-}
-function ytProg(pct){
-  const w=document.getElementById('yt-pb-wrap'),f=document.getElementById('yt-pb-fill');
-  w.style.display=pct>0?'block':'none'; f.style.width=Math.min(100,pct)+'%';
-}
-function ytClearInfo(){
-  document.getElementById('yt-info-card').style.display='none';
-}
-
-async function ytGetInfo(){
-  const url=document.getElementById('yt-url').value.trim();
-  if(!url){ytStatus('⚠ Entre un lien YouTube','var(--warn)');return;}
-  if(!ytServerOk){ytStatus('⚠ Serveur non connecté','var(--err)');return;}
-  const btn=document.getElementById('yt-info-btn');
-  btn.textContent='⏳';btn.disabled=true;
-  ytStatus('Récupération des infos…','var(--accent)');
-  try{
-    const r=await fetch(`http://127.0.0.1:${ytServerPort}/info?url=${encodeURIComponent(url)}`);
-    const d=await r.json();
-    if(d.error)throw new Error(d.error);
-    document.getElementById('yt-info-title').textContent=d.title||'Inconnu';
-    const dur=d.duration?`${Math.floor(d.duration/60)}:${String(d.duration%60).padStart(2,'0')}`:'?';
-    document.getElementById('yt-info-dur').textContent='⏱ '+dur;
-    document.getElementById('yt-info-who').textContent='👤 '+(d.uploader||'');
-    document.getElementById('yt-info-card').style.display='block';
-    ytStatus('Prêt à télécharger','var(--a3)');
-  }catch(e){
-    ytStatus('Erreur: '+e.message,'var(--err)');
-  }
-  btn.textContent='🔍 Info';btn.disabled=false;
-}
-
-async function ytDownloadLocal(){
-  const url=document.getElementById('yt-url').value.trim();
-  if(!url){ytStatus('⚠ Entre un lien YouTube','var(--warn)');return;}
-  if(!ytServerOk){ytStatus('⚠ Lance ZenkariYT_Server.py d'abord','var(--err)');return;}
-  const quality=document.getElementById('yt-quality').value;
-  const btn=document.getElementById('yt-dl-btn');
-  btn.disabled=true; btn.textContent='⏳ Conversion en cours…';
-  ytStatus('Téléchargement via yt-dlp…','var(--accent)');
-  ytProg(10);
-  // Animate progress bar while waiting
-  let prog=10;
-  const progInt=setInterval(()=>{prog=Math.min(prog+2,90);ytProg(prog);},800);
-  try{
-    const apiUrl=`http://127.0.0.1:${ytServerPort}/download?url=${encodeURIComponent(url)}&fmt=${ytFmt}&quality=${quality}`;
-    const r=await fetch(apiUrl);
-    clearInterval(progInt);
-    if(!r.ok){const d=await r.json();throw new Error(d.error||'Erreur serveur');}
-    ytProg(95);
-    ytStatus('Téléchargement du fichier…','var(--a3)');
-    const blob=await r.blob();
-    ytProg(100);
-    // Get filename from header
-    const cd=r.headers.get('content-disposition')||'';
-    const m=cd.match(/filename="?([^"\n]+)"?/);
-    const fname=m?m[1]:`youtube_${Date.now()}.${ytFmt}`;
-    saveAs(blob,fname);
-    ytStatus(`✓ Téléchargé : ${fname}`,'var(--a3)');
-    toast(`✓ YouTube → ${fname}`,'ok',blob,fname);
-    log(`YouTube OK: ${fname} (${(blob.size/1024/1024).toFixed(2)} MB)`,'ok');
-    setTimeout(()=>ytProg(0),3000);
-  }catch(e){
-    clearInterval(progInt);
-    ytProg(0);
-    ytStatus('✗ '+e.message,'var(--err)');
-    toast('✗ YouTube: '+e.message,'err');
-    log('YouTube ERR: '+e.message,'err');
-  }
-  btn.disabled=false;
-  btn.textContent='⬇ Télécharger';
-}
-
-document.getElementById('yt-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)hideYT();});
-document.getElementById('yt-url').addEventListener('keydown',e=>{if(e.key==='Enter')ytGetInfo();});
-
-/* ════════════════════════════════════════════
-   I18N
-════════════════════════════════════════════ */
-function applyLang(){
-  const map={
-    'lbl-src':'src','lbl-drag':'drag','lbl-drop':'drop','lbl-empty':'empty',
-    'lbl-add':'add','lbl-clear':'clear','lbl-out':'out','lbl-out-info':'outInfo',
-    'lbl-fmt':'fmt','lbl-manual':'manual','lbl-cvt':'cvt','lbl-log':'log',
-    'lbl-lang':'lang','prog-lbl':'ready','btn-cp':'cp','btn-cl':'cl',
-  };
-  for(const[id,k]of Object.entries(map)){const el=document.getElementById(id);if(el)el.textContent=T(k);}
-  setStatus(T('ready'));buildGrid();if(selExt)pickExt(selExt);updStats();
-}
-document.getElementById('lang-sel').addEventListener('change',function(){LANG=this.value;applyLang();});
-
-/* ════════════════════════════════════════════
-   KEYBOARD
-════════════════════════════════════════════ */
-document.addEventListener('keydown',e=>{
-  if((e.ctrlKey||e.metaKey)&&e.key==='Enter')startConvert();
-  if(e.key==='Delete'&&document.activeElement.tagName!=='INPUT'){
-    const s=document.querySelector('.fi.sel');if(s)window.rmFile(parseInt(s.dataset.id));
-  }
-  if(e.key==='Escape'){hideYT();document.getElementById('mw-modal').classList.add('hidden');}
-});
-
-/* ════════════════════════════════════════════
-   INIT
-════════════════════════════════════════════ */
-// Désinscrire tout service worker résiduel
-if('serviceWorker' in navigator){
-  navigator.serviceWorker.getRegistrations().then(regs=>regs.forEach(r=>r.unregister()));
-}
-buildGrid();
-renderFiles();
-log('Zenkari Converter v3.2 Web — Prêt 🚀','info');
-setTimeout(()=>{
-  const libs=[
-    [typeof PDFLib!=='undefined','pdf-lib'],
-    [typeof XLSX!=='undefined','xlsx/SheetJS'],
-    [typeof mammoth!=='undefined','mammoth'],
-    [typeof JSZip!=='undefined','JSZip'],
-    [typeof saveAs!=='undefined','FileSaver'],
-  ];
-  const ok=libs.filter(l=>l[0]).map(l=>l[1]);
-  const ko=libs.filter(l=>!l[0]).map(l=>l[1]);
-  if(ok.length)log('Libs OK: '+ok.join(' ✓  ')+' ✓','ok');
-  if(ko.length)log('⚠ Libs manquantes (CDN lent): '+ko.join(', '),'warn');
-},2000);
-</script>
-</body>
-</html>
+#!/usr/bin/env python3
+# ╔══════════════════════════════════════════════════════════╗
+#  ZENKARI CONVERTER  v2.0.0
+#  Universal File Converter — Zenkari Labs
+#  Python 3.10+  |  15 langues  |  60+ formats  |  Multimédia
+# ╚══════════════════════════════════════════════════════════╝
+
+import os, sys, json, time, shutil, threading, subprocess
+import importlib, importlib.util, traceback
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+from pathlib import Path
+from datetime import datetime
+
+def safe_import(mod):
+    try: return importlib.import_module(mod)
+    except ImportError: return None
+
+# ══════════════════════════════════════════════════════════════
+#  I18N — 15 LANGUES
+# ══════════════════════════════════════════════════════════════
+LANG_LABELS = {
+    "fr":"🇫🇷 Français","en":"🇬🇧 English","es":"🇪🇸 Español","de":"🇩🇪 Deutsch",
+    "it":"🇮🇹 Italiano","pt":"🇵🇹 Português","ru":"🇷🇺 Русский","zh":"🇨🇳 中文",
+    "ja":"🇯🇵 日本語","ar":"🇸🇦 العربية","ko":"🇰🇷 한국어","nl":"🇳🇱 Nederlands",
+    "pl":"🇵🇱 Polski","tr":"🇹🇷 Türkçe","sv":"🇸🇪 Svenska",
+}
+
+S = {
+    "subtitle":       {"fr":"Convertisseur universel","en":"Universal File Converter","es":"Convertidor universal","de":"Universalkonverter","it":"Convertitore universale","pt":"Conversor universal","ru":"Универсальный конвертер","zh":"通用文件转换器","ja":"ファイルコンバーター","ar":"محول الملفات","ko":"범용 변환기","nl":"Universele converter","pl":"Konwerter plików","tr":"Evrensel Dönüştürücü","sv":"Universell konverterare"},
+    "source_files":   {"fr":"FICHIERS SOURCE","en":"SOURCE FILES","es":"ARCHIVOS FUENTE","de":"QUELLDATEIEN","it":"FILE SORGENTE","pt":"ARQUIVOS FONTE","ru":"ИСХОДНЫЕ ФАЙЛЫ","zh":"源文件","ja":"ソースファイル","ar":"الملفات المصدر","ko":"소스 파일","nl":"BRONBESTANDEN","pl":"PLIKI ŹRÓDŁOWE","tr":"KAYNAK DOSYALAR","sv":"KÄLLFILER"},
+    "drag_hint":      {"fr":"ou glisser-déposer →","en":"or drag & drop →","es":"o arrastrar →","de":"oder drag & drop →","it":"o trascina →","pt":"ou arrastar →","ru":"или перетащите →","zh":"或拖放 →","ja":"またはドラッグ →","ar":"أو اسحب →","ko":"또는 드래그 →","nl":"of slepen →","pl":"lub przeciągnij →","tr":"veya sürükle →","sv":"eller dra →"},
+    "btn_add":        {"fr":"+ Ajouter","en":"+ Add","es":"+ Añadir","de":"+ Hinzufügen","it":"+ Aggiungi","pt":"+ Adicionar","ru":"+ Добавить","zh":"+ 添加","ja":"+ 追加","ar":"+ إضافة","ko":"+ 추가","nl":"+ Toevoegen","pl":"+ Dodaj","tr":"+ Ekle","sv":"+ Lägg till"},
+    "btn_folder":     {"fr":"+ Dossier","en":"+ Folder","es":"+ Carpeta","de":"+ Ordner","it":"+ Cartella","pt":"+ Pasta","ru":"+ Папка","zh":"+ 文件夹","ja":"+ フォルダ","ar":"+ مجلد","ko":"+ 폴더","nl":"+ Map","pl":"+ Folder","tr":"+ Klasör","sv":"+ Mapp"},
+    "btn_clear":      {"fr":"✕ Vider","en":"✕ Clear","es":"✕ Vaciar","de":"✕ Leeren","it":"✕ Svuota","pt":"✕ Limpar","ru":"✕ Очистить","zh":"✕ 清空","ja":"✕ クリア","ar":"✕ مسح","ko":"✕ 지우기","nl":"✕ Wissen","pl":"✕ Wyczyść","tr":"✕ Temizle","sv":"✕ Rensa"},
+    "n_files":        {"fr":"{n} fichier(s)","en":"{n} file(s)","es":"{n} archivo(s)","de":"{n} Datei(en)","it":"{n} file","pt":"{n} arquivo(s)","ru":"{n} файл(ов)","zh":"{n} 个文件","ja":"{n} ファイル","ar":"{n} ملف","ko":"{n} 파일","nl":"{n} bestand(en)","pl":"{n} plik(ów)","tr":"{n} dosya","sv":"{n} fil(er)"},
+    "output_dir":     {"fr":"DOSSIER DE SORTIE","en":"OUTPUT DIRECTORY","es":"DIRECTORIO SALIDA","de":"AUSGABEORDNER","it":"CARTELLA OUTPUT","pt":"PASTA DE SAÍDA","ru":"ПАПКА ВЫВОДА","zh":"输出目录","ja":"出力フォルダ","ar":"مجلد الإخراج","ko":"출력 폴더","nl":"UITVOERMAP","pl":"FOLDER WYJŚCIOWY","tr":"ÇIKTI KLASÖRÜ","sv":"UTDATAMAPP"},
+    "browse":         {"fr":"Parcourir…","en":"Browse…","es":"Explorar…","de":"Durchsuchen…","it":"Sfoglia…","pt":"Procurar…","ru":"Обзор…","zh":"浏览…","ja":"参照…","ar":"تصفح…","ko":"찾아보기…","nl":"Bladeren…","pl":"Przeglądaj…","tr":"Gözat…","sv":"Bläddra…"},
+    "same_src":       {"fr":"Même dossier que la source","en":"Same folder as source","es":"Misma carpeta","de":"Gleicher Ordner","it":"Stessa cartella","pt":"Mesma pasta","ru":"Та же папка","zh":"相同目录","ja":"同じフォルダ","ar":"نفس المجلد","ko":"같은 폴더","nl":"Zelfde map","pl":"Ten sam folder","tr":"Aynı klasör","sv":"Samma mapp"},
+    "target_format":  {"fr":"FORMAT CIBLE","en":"TARGET FORMAT","es":"FORMATO DESTINO","de":"ZIELFORMAT","it":"FORMATO DEST.","pt":"FORMATO ALVO","ru":"ЦЕЛЕВОЙ ФОРМАТ","zh":"目标格式","ja":"ターゲット形式","ar":"الصيغة المستهدفة","ko":"대상 형식","nl":"DOELFORMAAT","pl":"FORMAT DOCELOWY","tr":"HEDEF FORMAT","sv":"MÅLFORMAT"},
+    "manual_ext":     {"fr":"Ext. manuelle :","en":"Manual ext:","es":"Ext. manual:","de":"Erweiterung:","it":"Est. manuale:","pt":"Ext. manual:","ru":"Расширение:","zh":"手动扩展名：","ja":"手動拡張子：","ar":"الامتداد:","ko":"수동 확장자:","nl":"Extensie:","pl":"Rozszerzenie:","tr":"Uzantı:","sv":"Tillägg:"},
+    "convert_btn":    {"fr":"⚡  CONVERTIR","en":"⚡  CONVERT","es":"⚡  CONVERTIR","de":"⚡  KONVERTIEREN","it":"⚡  CONVERTI","pt":"⚡  CONVERTER","ru":"⚡  КОНВЕРТИРОВАТЬ","zh":"⚡  转换","ja":"⚡  変換","ar":"⚡  تحويل","ko":"⚡  변환","nl":"⚡  CONVERTEREN","pl":"⚡  KONWERTUJ","tr":"⚡  DÖNÜŞTÜR","sv":"⚡  KONVERTERA"},
+    "converting_btn": {"fr":"⏳  En cours…","en":"⏳  Converting…","es":"⏳  Convirtiendo…","de":"⏳  Konvertiere…","it":"⏳  Conversione…","pt":"⏳  Convertendo…","ru":"⏳  Конвертация…","zh":"⏳  转换中…","ja":"⏳  変換中…","ar":"⏳  جارٍ التحويل…","ko":"⏳  변환 중…","nl":"⏳  Converteren…","pl":"⏳  Konwertowanie…","tr":"⏳  Dönüştürülüyor…","sv":"⏳  Konverterar…"},
+    "log_title":      {"fr":"JOURNAL DE CONVERSION","en":"CONVERSION LOG","es":"REGISTRO","de":"PROTOKOLL","it":"REGISTRO","pt":"LOG","ru":"ЖУРНАЛ","zh":"转换日志","ja":"変換ログ","ar":"سجل التحويل","ko":"변환 로그","nl":"LOGBOEK","pl":"DZIENNIK","tr":"GÜNLÜK","sv":"LOGG"},
+    "language":       {"fr":"LANGUE","en":"LANGUAGE","es":"IDIOMA","de":"SPRACHE","it":"LINGUA","pt":"IDIOMA","ru":"ЯЗЫК","zh":"语言","ja":"言語","ar":"اللغة","ko":"언어","nl":"TAAL","pl":"JĘZYK","tr":"DİL","sv":"SPRÅK"},
+    "ready":          {"fr":"Prêt.","en":"Ready.","es":"Listo.","de":"Bereit.","it":"Pronto.","pt":"Pronto.","ru":"Готово.","zh":"就绪。","ja":"準備完了。","ar":"جاهز.","ko":"준비됨.","nl":"Klaar.","pl":"Gotowy.","tr":"Hazır.","sv":"Redo."},
+    "warn_no_file":   {"fr":"Aucun fichier sélectionné.","en":"No file selected.","es":"Sin archivo.","de":"Keine Datei.","it":"Nessun file.","pt":"Nenhum arquivo.","ru":"Файл не выбран.","zh":"未选择文件。","ja":"ファイルなし。","ar":"لم يتم تحديد ملف.","ko":"파일 없음.","nl":"Geen bestand.","pl":"Brak pliku.","tr":"Dosya yok.","sv":"Ingen fil."},
+    "warn_no_ext":    {"fr":"Choisissez un format cible.","en":"Choose a target format.","es":"Elige un formato.","de":"Zielformat wählen.","it":"Scegli un formato.","pt":"Escolha um formato.","ru":"Выберите формат.","zh":"选择目标格式。","ja":"形式を選択。","ar":"اختر صيغة.","ko":"형식을 선택하세요.","nl":"Kies een formaat.","pl":"Wybierz format.","tr":"Format seçin.","sv":"Välj format."},
+    "msg_success":    {"fr":"{n} fichier(s) converti(s) ✓","en":"{n} file(s) converted ✓","es":"{n} convertido(s) ✓","de":"{n} konvertiert ✓","it":"{n} convertiti ✓","pt":"{n} convertido(s) ✓","ru":"{n} конвертировано ✓","zh":"{n} 转换成功 ✓","ja":"{n} 変換完了 ✓","ar":"تم تحويل {n} ✓","ko":"{n}개 변환됨 ✓","nl":"{n} geconverteerd ✓","pl":"{n} przekonwertowanych ✓","tr":"{n} dönüştürüldü ✓","sv":"{n} konverterade ✓"},
+    "msg_partial":    {"fr":"{ok} OK, {err} erreur(s). Voir le journal.","en":"{ok} OK, {err} error(s). Check log.","es":"{ok} OK, {err} error(es).","de":"{ok} OK, {err} Fehler.","it":"{ok} OK, {err} errore/i.","pt":"{ok} OK, {err} erro(s).","ru":"{ok} OK, {err} ошибок.","zh":"{ok} 成功, {err} 错误.","ja":"{ok} 成功, {err} エラー.","ar":"{ok} ناجح, {err} خطأ.","ko":"{ok} 성공, {err} 오류.","nl":"{ok} OK, {err} fout(en).","pl":"{ok} OK, {err} błąd(ów).","tr":"{ok} OK, {err} hata.","sv":"{ok} OK, {err} fel."},
+    "log_start":      {"fr":"=== Démarrage {n} fichier(s) -> .{ext} ===\n","en":"=== Starting {n} file(s) -> .{ext} ===\n","es":"=== Inicio {n} -> .{ext} ===\n","de":"=== Start {n} -> .{ext} ===\n","it":"=== Avvio {n} -> .{ext} ===\n","pt":"=== Início {n} -> .{ext} ===\n","ru":"=== Старт {n} -> .{ext} ===\n","zh":"=== 开始 {n} -> .{ext} ===\n","ja":"=== 開始 {n} -> .{ext} ===\n","ar":"=== بدء {n} -> .{ext} ===\n","ko":"=== 시작 {n} -> .{ext} ===\n","nl":"=== Start {n} -> .{ext} ===\n","pl":"=== Start {n} -> .{ext} ===\n","tr":"=== Başlangıç {n} -> .{ext} ===\n","sv":"=== Start {n} -> .{ext} ===\n"},
+    "log_done":       {"fr":"\n=== Terminé : {ok} OK, {err} erreur(s) / {total} ===\n","en":"\n=== Done: {ok} OK, {err} error(s) / {total} ===\n","es":"\n=== Hecho: {ok} OK, {err} error(es) / {total} ===\n","de":"\n=== Fertig: {ok} OK, {err} Fehler / {total} ===\n","it":"\n=== Fine: {ok} OK, {err} errori / {total} ===\n","pt":"\n=== Concluído: {ok} OK, {err} erro(s) / {total} ===\n","ru":"\n=== Готово: {ok} OK, {err} ошибок / {total} ===\n","zh":"\n=== 完成: {ok} 成功, {err} 错误 / {total} ===\n","ja":"\n=== 完了: {ok} 成功, {err} エラー / {total} ===\n","ar":"\n=== اكتمل: {ok} ناجح, {err} خطأ / {total} ===\n","ko":"\n=== 완료: {ok} 성공, {err} 오류 / {total} ===\n","nl":"\n=== Klaar: {ok} OK, {err} fout(en) / {total} ===\n","pl":"\n=== Gotowe: {ok} OK, {err} błąd(ów) / {total} ===\n","tr":"\n=== Bitti: {ok} OK, {err} hata / {total} ===\n","sv":"\n=== Klar: {ok} OK, {err} fel / {total} ===\n"},
+    "status_ok":      {"fr":"✓ {ok} converti(s)  ✗ {err} erreur(s)","en":"✓ {ok} converted  ✗ {err} error(s)","es":"✓ {ok} convertido(s)  ✗ {err} error(es)","de":"✓ {ok} konvertiert  ✗ {err} Fehler","it":"✓ {ok} convertiti  ✗ {err} errore/i","pt":"✓ {ok} convertido(s)  ✗ {err} erro(s)","ru":"✓ {ok} конвертировано  ✗ {err} ошибок","zh":"✓ {ok} 成功  ✗ {err} 错误","ja":"✓ {ok} 完了  ✗ {err} エラー","ar":"✓ {ok} ناجح  ✗ {err} خطأ","ko":"✓ {ok} 성공  ✗ {err} 오류","nl":"✓ {ok} OK  ✗ {err} fout(en)","pl":"✓ {ok} OK  ✗ {err} błąd(ów)","tr":"✓ {ok} OK  ✗ {err} hata","sv":"✓ {ok} OK  ✗ {err} fel"},
+    "log_view":       {"fr":"📋 Voir Journal","en":"📋 View Log","es":"📋 Ver Registro","de":"📋 Protokoll","it":"📋 Registro","pt":"📋 Ver Log","ru":"📋 Журнал","zh":"📋 查看日志","ja":"📋 ログ","ar":"📋 السجل","ko":"📋 로그","nl":"📋 Logboek","pl":"📋 Dziennik","tr":"📋 Günlük","sv":"📋 Logg"},
+    "log_clear":      {"fr":"🗑 Effacer","en":"🗑 Clear","es":"🗑 Borrar","de":"🗑 Löschen","it":"🗑 Cancella","pt":"🗑 Limpar","ru":"🗑 Очистить","zh":"🗑 清除","ja":"🗑 クリア","ar":"🗑 مسح","ko":"🗑 지우기","nl":"🗑 Wissen","pl":"🗑 Wyczyść","tr":"🗑 Temizle","sv":"🗑 Rensa"},
+    "log_copy":       {"fr":"📄 Copier","en":"📄 Copy","es":"📄 Copiar","de":"📄 Kopieren","it":"📄 Copia","pt":"📄 Copiar","ru":"📄 Копировать","zh":"📄 复制","ja":"📄 コピー","ar":"📄 نسخ","ko":"📄 복사","nl":"📄 Kopiëren","pl":"📄 Kopiuj","tr":"📄 Kopyala","sv":"📄 Kopiera"},
+    "ffmpeg_missing": {"fr":"⚠ ffmpeg non trouvé — conversion multimédia indisponible.\nInstallez ffmpeg et ajoutez-le au PATH.","en":"⚠ ffmpeg not found — media conversion unavailable.\nInstall ffmpeg and add it to PATH.","es":"⚠ ffmpeg no encontrado.","de":"⚠ ffmpeg nicht gefunden.","it":"⚠ ffmpeg non trovato.","pt":"⚠ ffmpeg não encontrado.","ru":"⚠ ffmpeg не найден.","zh":"⚠ 未找到ffmpeg。","ja":"⚠ ffmpegが見つかりません。","ar":"⚠ ffmpeg غير موجود.","ko":"⚠ ffmpeg 없음.","nl":"⚠ ffmpeg niet gevonden.","pl":"⚠ Brak ffmpeg.","tr":"⚠ ffmpeg bulunamadı.","sv":"⚠ ffmpeg saknas."},
+    "cat_image":      {"fr":"🖼 Images","en":"🖼 Images","es":"🖼 Imágenes","de":"🖼 Bilder","it":"🖼 Immagini","pt":"🖼 Imagens","ru":"🖼 Картинки","zh":"🖼 图片","ja":"🖼 画像","ar":"🖼 صور","ko":"🖼 이미지","nl":"🖼 Afbeeldingen","pl":"🖼 Obrazy","tr":"🖼 Görseller","sv":"🖼 Bilder"},
+    "cat_video":      {"fr":"🎬 Vidéo","en":"🎬 Video","es":"🎬 Vídeo","de":"🎬 Video","it":"🎬 Video","pt":"🎬 Vídeo","ru":"🎬 Видео","zh":"🎬 视频","ja":"🎬 動画","ar":"🎬 فيديو","ko":"🎬 비디오","nl":"🎬 Video","pl":"🎬 Wideo","tr":"🎬 Video","sv":"🎬 Video"},
+    "cat_audio":      {"fr":"🎵 Audio","en":"🎵 Audio","es":"🎵 Audio","de":"🎵 Audio","it":"🎵 Audio","pt":"🎵 Áudio","ru":"🎵 Аудио","zh":"🎵 音频","ja":"🎵 音声","ar":"🎵 صوت","ko":"🎵 오디오","nl":"🎵 Audio","pl":"🎵 Audio","tr":"🎵 Ses","sv":"🎵 Ljud"},
+    "cat_document":   {"fr":"📄 Documents","en":"📄 Documents","es":"📄 Documentos","de":"📄 Dokumente","it":"📄 Documenti","pt":"📄 Documentos","ru":"📄 Документы","zh":"📄 文档","ja":"📄 ドキュメント","ar":"📄 وثائق","ko":"📄 문서","nl":"📄 Documenten","pl":"📄 Dokumenty","tr":"📄 Belgeler","sv":"📄 Dokument"},
+    "cat_data":       {"fr":"📊 Données","en":"📊 Data","es":"📊 Datos","de":"📊 Daten","it":"📊 Dati","pt":"📊 Dados","ru":"📊 Данные","zh":"📊 数据","ja":"📊 データ","ar":"📊 بيانات","ko":"📊 데이터","nl":"📊 Gegevens","pl":"📊 Dane","tr":"📊 Veriler","sv":"📊 Data"},
+    "cat_archive":    {"fr":"📦 Archives","en":"📦 Archives","es":"📦 Archivos","de":"📦 Archive","it":"📦 Archivi","pt":"📦 Arquivos","ru":"📦 Архивы","zh":"📦 压缩包","ja":"📦 アーカイブ","ar":"📦 أرشيفات","ko":"📦 아카이브","nl":"📦 Archieven","pl":"📦 Archiwa","tr":"📦 Arşivler","sv":"📦 Arkiv"},
+    "cat_code":       {"fr":"💻 Code","en":"💻 Code","es":"💻 Código","de":"💻 Code","it":"💻 Codice","pt":"💻 Código","ru":"💻 Код","zh":"💻 代码","ja":"💻 コード","ar":"💻 كود","ko":"💻 코드","nl":"💻 Code","pl":"💻 Kod","tr":"💻 Kod","sv":"💻 Kod"},
+    "cat_subtitle":   {"fr":"💬 Sous-titres","en":"💬 Subtitles","es":"💬 Subtítulos","de":"💬 Untertitel","it":"💬 Sottotitoli","pt":"💬 Legendas","ru":"💬 Субтитры","zh":"💬 字幕","ja":"💬 字幕","ar":"💬 ترجمات","ko":"💬 자막","nl":"💬 Ondertitels","pl":"💬 Napisy","tr":"💬 Altyazılar","sv":"💬 Undertexter"},
+}
+
+_lang = "fr"
+def t(key, **kw):
+    s = S.get(key, {}).get(_lang) or S.get(key, {}).get("en") or key
+    return s.format(**kw) if kw else s
+def set_lang(code): global _lang; _lang = code
+
+# ══════════════════════════════════════════════════════════════
+#  PALETTE
+# ══════════════════════════════════════════════════════════════
+C = {
+    "bg":"#0a0c10","surface":"#111520","panel":"#161b27","border":"#1e2535",
+    "accent":"#00d4ff","accent2":"#7b61ff","success":"#00e878",
+    "warning":"#ffb347","error":"#ff4d6d","text":"#e2e8f0","muted":"#64748b",
+}
+FM = ("Consolas",10); FB = ("Segoe UI",10); FS = ("Segoe UI",9)
+
+# ══════════════════════════════════════════════════════════════
+#  FORMAT DEFINITIONS
+# ══════════════════════════════════════════════════════════════
+IMAGE_EXTS    = {"png","jpg","jpeg","bmp","gif","webp","tiff","tif","ico"}
+VIDEO_EXTS    = {"mp4","avi","mkv","mov","wmv","flv","webm","m4v","mpeg","mpg","3gp"}
+AUDIO_EXTS    = {"mp3","wav","aac","flac","ogg","m4a","wma","opus","aiff"}
+DOCUMENT_EXTS = {"txt","md","html","htm","docx","doc","xlsx","xls","pdf"}
+DATA_EXTS     = {"csv","json","yaml","yml","toml","xml","ini","cfg","env"}
+ARCHIVE_EXTS  = {"zip","tar","gz"}
+CODE_EXTS     = {"py","js","ts","css","sql","sh","bat"}
+SUBTITLE_EXTS = {"srt","vtt"}
+
+CONVERSIONS = {
+    # Images
+    "png":  ["jpg","jpeg","bmp","gif","webp","tiff","ico","pdf"],
+    "jpg":  ["png","bmp","gif","webp","tiff","ico","pdf"],
+    "jpeg": ["png","bmp","gif","webp","tiff","ico","pdf"],
+    "bmp":  ["png","jpg","gif","webp","tiff","pdf"],
+    "gif":  ["png","jpg","bmp","webp","tiff"],
+    "webp": ["png","jpg","bmp","gif","tiff","pdf"],
+    "tiff": ["png","jpg","bmp","gif","webp","pdf"],
+    "tif":  ["png","jpg","bmp","gif","webp","pdf"],
+    "ico":  ["png","jpg","bmp"],
+    # Video
+    "mp4":  ["avi","mkv","mov","webm","mp3","wav","aac","flac","gif"],
+    "avi":  ["mp4","mkv","mov","webm","mp3","wav"],
+    "mkv":  ["mp4","avi","mov","webm","mp3","wav"],
+    "mov":  ["mp4","avi","mkv","webm","mp3","wav"],
+    "wmv":  ["mp4","avi","mkv","mov","mp3"],
+    "flv":  ["mp4","avi","mkv","mp3"],
+    "webm": ["mp4","avi","mkv","mp3","wav"],
+    "m4v":  ["mp4","avi","mkv","mov"],
+    "mpeg": ["mp4","avi","mkv","mp3"],
+    "mpg":  ["mp4","avi","mkv","mp3"],
+    "3gp":  ["mp4","avi","mp3"],
+    # Audio
+    "mp3":  ["wav","aac","flac","ogg","m4a","wma","opus"],
+    "wav":  ["mp3","aac","flac","ogg","m4a","opus"],
+    "aac":  ["mp3","wav","flac","ogg","m4a"],
+    "flac": ["mp3","wav","aac","ogg","m4a"],
+    "ogg":  ["mp3","wav","aac","flac"],
+    "m4a":  ["mp3","wav","aac","flac","ogg"],
+    "wma":  ["mp3","wav","aac","flac"],
+    "opus": ["mp3","wav","aac","ogg"],
+    "aiff": ["mp3","wav","aac","flac"],
+    # Documents
+    "txt":  ["pdf","html","md","docx"],
+    "md":   ["html","pdf","txt","docx"],
+    "html": ["pdf","txt","md"],
+    "htm":  ["pdf","txt","md"],
+    "docx": ["pdf","txt","html","md"],
+    "doc":  ["pdf","txt","html","md"],
+    "xlsx": ["csv","json","html","pdf"],
+    "xls":  ["csv","json","html","pdf"],
+    # Data
+    "csv":  ["json","xlsx","html","txt"],
+    "json": ["csv","yaml","toml","txt","html"],
+    "yaml": ["json","toml","txt"],
+    "yml":  ["json","toml","txt"],
+    "toml": ["json","yaml","txt"],
+    "xml":  ["json","html","txt","csv"],
+    "ini":  ["json","yaml","toml","txt"],
+    "cfg":  ["json","yaml","txt"],
+    "env":  ["txt","json"],
+    # Archives
+    "zip":  ["tar","gz"],
+    "tar":  ["zip","gz"],
+    "gz":   ["zip","tar"],
+    # Code
+    "py":   ["txt","html","md"],
+    "js":   ["txt","html","md"],
+    "ts":   ["txt","html","md"],
+    "css":  ["txt","html"],
+    "sql":  ["txt","html"],
+    "sh":   ["txt"],
+    "bat":  ["txt","sh"],
+    # Subtitles
+    "srt":  ["vtt","txt"],
+    "vtt":  ["srt","txt"],
+}
+
+CAT_COLOR = {
+    "image":"#00d4ff","video":"#ff6b35","audio":"#a855f7",
+    "document":"#7b61ff","data":"#00e878","archive":"#ffb347",
+    "code":"#ff6b9d","subtitle":"#ffd700",
+}
+
+def get_cat(ext):
+    e = ext.lower().lstrip(".")
+    if e in IMAGE_EXTS:    return "image"
+    if e in VIDEO_EXTS:    return "video"
+    if e in AUDIO_EXTS:    return "audio"
+    if e in DOCUMENT_EXTS: return "document"
+    if e in DATA_EXTS:     return "data"
+    if e in ARCHIVE_EXTS:  return "archive"
+    if e in CODE_EXTS:     return "code"
+    if e in SUBTITLE_EXTS: return "subtitle"
+    return "document"
+
+# ══════════════════════════════════════════════════════════════
+#  FFMPEG CHECK
+# ══════════════════════════════════════════════════════════════
+# Cherche ffmpeg dans le PATH et emplacements courants Windows/Mac/Linux
+FFMPEG_PATHS = [
+    "ffmpeg",
+    r"C:\ffmpeg\bin\ffmpeg.exe",
+    r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
+    r"C:\Program Files (x86)\ffmpeg\bin\ffmpeg.exe",
+    "/usr/bin/ffmpeg",
+    "/usr/local/bin/ffmpeg",
+    "/opt/homebrew/bin/ffmpeg",
+]
+
+def find_ffmpeg():
+    for path in FFMPEG_PATHS:
+        try:
+            r = subprocess.run([path, "-version"], capture_output=True, timeout=5)
+            if r.returncode == 0:
+                return path
+        except Exception:
+            continue
+    return None
+
+FFMPEG = find_ffmpeg()  # None si introuvable, sinon chemin complet vers ffmpeg
+
+# ══════════════════════════════════════════════════════════════
+#  CONVERSION ENGINE
+# ══════════════════════════════════════════════════════════════
+def _esc(s): return s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+
+class Converter:
+
+    @staticmethod
+    def convert(src: Path, dst_ext: str, out_dir: Path, cb=None) -> Path:
+        se = src.suffix.lower().lstrip(".")
+        de = dst_ext.lower().lstrip(".")
+        dst = out_dir / (src.stem + "." + de)
+
+        if cb: cb(5, f"  {src.name}…")
+
+        # ── MEDIA (ffmpeg) ────────────────────────────────────
+        if se in VIDEO_EXTS | AUDIO_EXTS or de in VIDEO_EXTS | AUDIO_EXTS:
+            return Converter._ffmpeg(src, dst, se, de, cb)
+
+        # ── IMAGES ───────────────────────────────────────────
+        if se in IMAGE_EXTS:
+            return Converter._image(src, dst, de, cb)
+
+        # ── DOCUMENTS ────────────────────────────────────────
+        if se in {"txt","py","js","ts","css","sql","sh","bat","env","cfg","ini"} | CODE_EXTS:
+            return Converter._text(src, dst, se, de, cb)
+        if se == "md":   return Converter._md(src, dst, de, cb)
+        if se in {"html","htm"}: return Converter._html(src, dst, de, cb)
+        if se in {"docx","doc"}: return Converter._docx(src, dst, de, cb)
+        if se in {"xlsx","xls"}: return Converter._xlsx(src, dst, de, cb)
+
+        # ── DATA ─────────────────────────────────────────────
+        if se == "csv":  return Converter._csv(src, dst, de, cb)
+        if se == "json": return Converter._json(src, dst, de, cb)
+        if se in {"yaml","yml"}: return Converter._yaml(src, dst, de, cb)
+        if se == "toml": return Converter._toml(src, dst, de, cb)
+        if se == "xml":  return Converter._xml(src, dst, de, cb)
+
+        # ── ARCHIVES ─────────────────────────────────────────
+        if se in ARCHIVE_EXTS: return Converter._archive(src, dst, de, cb)
+
+        # ── SUBTITLES ────────────────────────────────────────
+        if se in SUBTITLE_EXTS: return Converter._subtitle(src, dst, se, de, cb)
+
+        raise ValueError(f"Conversion .{se} → .{de} non supportée")
+
+    # ── FFMPEG (video + audio) ────────────────────────────────
+    @staticmethod
+    def _ffmpeg(src, dst, se, de, cb):
+        if not FFMPEG:
+            raise RuntimeError("ffmpeg introuvable.\nFichier attendu : C:\\ffmpeg\\bin\\ffmpeg.exe\nhttps://ffmpeg.org/download.html")
+        if cb: cb(20, "ffmpeg en cours…")
+        cmd = [FFMPEG, "-y", "-i", str(src)]
+        # Audio quality
+        if de == "mp3":  cmd += ["-q:a","2"]
+        elif de == "aac": cmd += ["-b:a","192k"]
+        elif de == "flac": cmd += ["-compression_level","8"]
+        elif de == "ogg": cmd += ["-q:a","4"]
+        elif de == "opus": cmd += ["-b:a","128k"]
+        # Extract audio from video
+        if se in VIDEO_EXTS and de in AUDIO_EXTS:
+            cmd += ["-vn"]
+        # Video gif special
+        if de == "gif":
+            cmd = [FFMPEG,"-y","-i",str(src),"-vf","fps=10,scale=480:-1:flags=lanczos","-loop","0",str(dst)]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise RuntimeError(f"ffmpeg: {result.stderr[-300:]}")
+            if cb: cb(100,"Done ✓")
+            return dst
+        cmd.append(str(dst))
+        if cb: cb(50, "ffmpeg traitement…")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            err = result.stderr[-500:] if result.stderr else "Erreur inconnue"
+            raise RuntimeError(f"ffmpeg erreur:\n{err}")
+        if cb: cb(100, "Done ✓")
+        return dst
+
+    # ── IMAGE ─────────────────────────────────────────────────
+    @staticmethod
+    def _image(src, dst, de, cb):
+        PIL = safe_import("PIL.Image")
+        if not PIL: raise ImportError("Pillow requis : pip install Pillow")
+        if cb: cb(30,"Ouverture image…")
+        img = PIL.open(str(src))
+        if img.mode in ("RGBA","P","LA") and de in {"jpg","jpeg","bmp"}:
+            bg = PIL.new("RGB", img.size, (255,255,255))
+            if img.mode == "P": img = img.convert("RGBA")
+            bg.paste(img, mask=img.split()[-1] if img.mode=="RGBA" else None)
+            img = bg
+        elif img.mode != "RGB" and de in {"jpg","jpeg"}:
+            img = img.convert("RGB")
+        if cb: cb(70,"Sauvegarde…")
+        fmt = {"jpg":"JPEG","jpeg":"JPEG","tiff":"TIFF","tif":"TIFF"}.get(de, de.upper())
+        if de == "pdf":
+            img.convert("RGB").save(str(dst), "PDF", resolution=150)
+        elif de == "ico":
+            img.save(str(dst), format="ICO", sizes=[(256,256),(128,128),(64,64),(32,32),(16,16)])
+        else:
+            save_kw = {}
+            if de in {"jpg","jpeg"}: save_kw["quality"] = 92
+            if de == "webp": save_kw["quality"] = 90
+            img.save(str(dst), format=fmt, **save_kw)
+        if cb: cb(100,"Done ✓")
+        return dst
+
+    # ── TEXT / CODE ───────────────────────────────────────────
+    @staticmethod
+    def _text(src, dst, se, de, cb):
+        if cb: cb(20,"Lecture…")
+        text = src.read_text(encoding="utf-8", errors="replace")
+        if cb: cb(60,"Conversion…")
+        if de == "html":
+            html = (f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{src.name}</title>"
+                    f"<style>body{{font-family:monospace;background:#0a0c10;color:#e2e8f0;padding:2rem}}"
+                    f"pre{{background:#111520;border:1px solid #1e2535;border-radius:8px;padding:1.5rem;overflow:auto;white-space:pre-wrap}}"
+                    f"h1{{color:#00d4ff;font-size:1rem;margin-bottom:1rem}}</style></head>"
+                    f"<body><h1>{_esc(src.name)}</h1><pre>{_esc(text)}</pre></body></html>")
+            dst.write_text(html, encoding="utf-8")
+        elif de == "md":
+            dst.write_text(f"# {src.name}\n\n```{se}\n{text}\n```\n", encoding="utf-8")
+        elif de == "pdf":
+            Converter._txt_to_pdf(text, dst)
+        elif de == "docx":
+            Converter._txt_to_docx(text, src.name, dst)
+        else:
+            dst.write_text(text, encoding="utf-8")
+        if cb: cb(100,"Done ✓")
+        return dst
+
+    # ── MARKDOWN ──────────────────────────────────────────────
+    @staticmethod
+    def _md(src, dst, de, cb):
+        if cb: cb(20,"Parsing Markdown…")
+        text = src.read_text(encoding="utf-8", errors="replace")
+        md = safe_import("markdown")
+        html_body = md.markdown(text, extensions=["extra"]) if md else text
+        if de == "html":
+            dst.write_text(
+                f"<!DOCTYPE html><html><head><meta charset='utf-8'><style>"
+                f"body{{font-family:sans-serif;max-width:800px;margin:2rem auto;line-height:1.7}}"
+                f"code{{background:#f4f4f4;padding:.2em .4em;border-radius:3px}}"
+                f"pre{{background:#f4f4f4;padding:1rem;border-radius:6px;overflow:auto}}"
+                f"</style></head><body>{html_body}</body></html>", encoding="utf-8")
+        elif de == "txt":
+            bs4 = safe_import("bs4")
+            dst.write_text(bs4.BeautifulSoup(html_body,"html.parser").get_text() if bs4 else text, encoding="utf-8")
+        elif de == "pdf":
+            Converter._txt_to_pdf(text, dst)
+        elif de == "docx":
+            Converter._txt_to_docx(text, src.name, dst)
+        if cb: cb(100,"Done ✓")
+        return dst
+
+    # ── HTML ──────────────────────────────────────────────────
+    @staticmethod
+    def _html(src, dst, de, cb):
+        if cb: cb(30,"Parsing HTML…")
+        text = src.read_text(encoding="utf-8", errors="replace")
+        bs4 = safe_import("bs4")
+        plain = bs4.BeautifulSoup(text,"html.parser").get_text() if bs4 else text
+        if de == "txt": dst.write_text(plain, encoding="utf-8")
+        elif de == "md": dst.write_text(f"# Converti depuis HTML\n\n{plain}", encoding="utf-8")
+        elif de == "pdf": Converter._txt_to_pdf(plain, dst)
+        if cb: cb(100,"Done ✓")
+        return dst
+
+    # ── DOCX ──────────────────────────────────────────────────
+    @staticmethod
+    def _docx(src, dst, de, cb):
+        if cb: cb(30,"Lecture DOCX…")
+        docx = safe_import("docx")
+        if not docx: raise ImportError("python-docx requis : pip install python-docx")
+        doc = docx.Document(str(src))
+        text = "\n".join(p.text for p in doc.paragraphs)
+        if de == "txt": dst.write_text(text, encoding="utf-8")
+        elif de == "md": dst.write_text(f"# {src.stem}\n\n{text}", encoding="utf-8")
+        elif de == "html": dst.write_text(f"<!DOCTYPE html><html><head><meta charset='utf-8'></head><body><pre>{_esc(text)}</pre></body></html>", encoding="utf-8")
+        elif de == "pdf": Converter._txt_to_pdf(text, dst)
+        if cb: cb(100,"Done ✓")
+        return dst
+
+    # ── XLSX ──────────────────────────────────────────────────
+    @staticmethod
+    def _xlsx(src, dst, de, cb):
+        if cb: cb(20,"Lecture tableur…")
+        openpyxl = safe_import("openpyxl")
+        if not openpyxl: raise ImportError("openpyxl requis : pip install openpyxl")
+        wb = openpyxl.load_workbook(str(src), data_only=True)
+        ws = wb.active
+        rows = [[str(c.value if c.value is not None else "") for c in row] for row in ws.iter_rows()]
+        if de == "csv":
+            import csv
+            with dst.open("w", newline="", encoding="utf-8") as f:
+                csv.writer(f).writerows(rows)
+        elif de == "json":
+            h = rows[0] if rows else []
+            dst.write_text(json.dumps([dict(zip(h,r)) for r in rows[1:]], indent=2, ensure_ascii=False), encoding="utf-8")
+        elif de == "html":
+            rh = "".join("<tr>"+"".join(f"<td>{_esc(c)}</td>" for c in r)+"</tr>" for r in rows)
+            dst.write_text(f"<!DOCTYPE html><html><body><table border='1' style='border-collapse:collapse'>{rh}</table></body></html>", encoding="utf-8")
+        elif de == "pdf":
+            Converter._table_to_pdf(rows, dst)
+        if cb: cb(100,"Done ✓")
+        return dst
+
+    # ── CSV ───────────────────────────────────────────────────
+    @staticmethod
+    def _csv(src, dst, de, cb):
+        import csv
+        if cb: cb(20,"Lecture CSV…")
+        with src.open(encoding="utf-8-sig", errors="replace") as f:
+            rows = list(csv.reader(f))
+        if de == "json":
+            h = rows[0] if rows else []
+            dst.write_text(json.dumps([dict(zip(h,r)) for r in rows[1:]], indent=2, ensure_ascii=False), encoding="utf-8")
+        elif de == "xlsx":
+            openpyxl = safe_import("openpyxl")
+            if not openpyxl: raise ImportError("openpyxl requis")
+            wb = openpyxl.Workbook(); ws = wb.active
+            for r in rows: ws.append(r)
+            wb.save(str(dst))
+        elif de == "html":
+            rh = "".join("<tr>"+"".join(f"<td>{_esc(c)}</td>" for c in r)+"</tr>" for r in rows)
+            dst.write_text(f"<!DOCTYPE html><html><body><table border='1'>{rh}</table></body></html>", encoding="utf-8")
+        elif de == "txt":
+            dst.write_text("\n".join("\t".join(r) for r in rows), encoding="utf-8")
+        if cb: cb(100,"Done ✓")
+        return dst
+
+    # ── JSON ──────────────────────────────────────────────────
+    @staticmethod
+    def _json(src, dst, de, cb):
+        if cb: cb(20,"Lecture JSON…")
+        data = json.loads(src.read_text(encoding="utf-8"))
+        if de == "yaml":
+            yaml = safe_import("yaml")
+            if not yaml: raise ImportError("PyYAML requis : pip install PyYAML")
+            dst.write_text(yaml.dump(data, allow_unicode=True, default_flow_style=False), encoding="utf-8")
+        elif de == "csv":
+            import csv
+            if isinstance(data, list) and data and isinstance(data[0], dict):
+                with dst.open("w", newline="", encoding="utf-8") as f:
+                    w = csv.DictWriter(f, fieldnames=data[0].keys())
+                    w.writeheader(); w.writerows(data)
+            else:
+                dst.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        elif de == "txt": dst.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        elif de == "html": dst.write_text(f"<!DOCTYPE html><html><body><pre>{_esc(json.dumps(data,indent=2,ensure_ascii=False))}</pre></body></html>", encoding="utf-8")
+        if cb: cb(100,"Done ✓")
+        return dst
+
+    # ── YAML ──────────────────────────────────────────────────
+    @staticmethod
+    def _yaml(src, dst, de, cb):
+        if cb: cb(20,"Lecture YAML…")
+        yaml = safe_import("yaml")
+        if not yaml: raise ImportError("PyYAML requis")
+        data = yaml.safe_load(src.read_text(encoding="utf-8"))
+        if de == "json": dst.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        elif de == "txt": dst.write_text(yaml.dump(data, allow_unicode=True), encoding="utf-8")
+        if cb: cb(100,"Done ✓")
+        return dst
+
+    # ── TOML ──────────────────────────────────────────────────
+    @staticmethod
+    def _toml(src, dst, de, cb):
+        if cb: cb(20,"Lecture TOML…")
+        try:
+            import tomllib as _t
+        except ImportError:
+            _t = safe_import("tomli")
+            if not _t: raise ImportError("tomli requis : pip install tomli")
+        data = _t.loads(src.read_text(encoding="utf-8"))
+        if de == "json": dst.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        elif de == "yaml":
+            yaml = safe_import("yaml")
+            if not yaml: raise ImportError("PyYAML requis")
+            dst.write_text(yaml.dump(data, allow_unicode=True), encoding="utf-8")
+        elif de == "txt": dst.write_text(str(data), encoding="utf-8")
+        if cb: cb(100,"Done ✓")
+        return dst
+
+    # ── XML ───────────────────────────────────────────────────
+    @staticmethod
+    def _xml(src, dst, de, cb):
+        import xml.etree.ElementTree as ET
+        if cb: cb(20,"Parsing XML…")
+        root = ET.parse(str(src)).getroot()
+        if de == "json":
+            def e2d(el):
+                d = dict(el.attrib)
+                ch = list(el)
+                if ch: d["_children"] = [e2d(c) for c in ch]
+                elif el.text and el.text.strip(): d["_text"] = el.text.strip()
+                return {el.tag: d}
+            dst.write_text(json.dumps(e2d(root), indent=2, ensure_ascii=False), encoding="utf-8")
+        elif de == "html": dst.write_text(f"<!DOCTYPE html><html><body><pre>{_esc(src.read_text(encoding='utf-8'))}</pre></body></html>", encoding="utf-8")
+        elif de in {"txt","csv"}: dst.write_text("\n".join(el.text.strip() for el in root.iter() if el.text and el.text.strip()), encoding="utf-8")
+        if cb: cb(100,"Done ✓")
+        return dst
+
+    # ── ARCHIVES ──────────────────────────────────────────────
+    @staticmethod
+    def _archive(src, dst, de, cb):
+        import zipfile, tarfile, tempfile
+        if cb: cb(20,"Extraction…")
+        tmp = Path(tempfile.mkdtemp())
+        se = src.suffix.lower()
+        try:
+            if se == ".zip":
+                with zipfile.ZipFile(src) as z: z.extractall(tmp)
+            elif se in {".tar",".gz",".tgz"}:
+                with tarfile.open(src) as t: t.extractall(tmp)
+            if cb: cb(60,"Recompression…")
+            if de == "zip":
+                with zipfile.ZipFile(dst,"w",zipfile.ZIP_DEFLATED) as z:
+                    for f in tmp.rglob("*"):
+                        if f.is_file(): z.write(f, f.relative_to(tmp))
+            elif de in {"tar","gz"}:
+                with tarfile.open(dst,"w:gz" if de=="gz" else "w") as t:
+                    t.add(tmp, arcname="")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        if cb: cb(100,"Done ✓")
+        return dst
+
+    # ── SUBTITLES ─────────────────────────────────────────────
+    @staticmethod
+    def _subtitle(src, dst, se, de, cb):
+        import re
+        if cb: cb(30,"Parsing sous-titres…")
+        text = src.read_text(encoding="utf-8", errors="replace")
+        if se == "srt" and de == "vtt":
+            vtt = re.sub(r"(\d{2}:\d{2}:\d{2}),(\d{3})", r"\1.\2", text)
+            dst.write_text("WEBVTT\n\n" + vtt, encoding="utf-8")
+        elif se == "vtt" and de == "srt":
+            srt = re.sub(r"(\d{2}:\d{2}:\d{2})\.(\d{3})", r"\1,\2", text.replace("WEBVTT\n\n",""))
+            dst.write_text(srt, encoding="utf-8")
+        elif de == "txt":
+            lines = [l for l in text.split("\n")
+                     if not re.match(r"^\d+$|^\d{2}:\d{2}|^WEBVTT",l) and l.strip()]
+            dst.write_text("\n".join(lines), encoding="utf-8")
+        if cb: cb(100,"Done ✓")
+        return dst
+
+    # ── PDF helpers ───────────────────────────────────────────
+    @staticmethod
+    def _txt_to_pdf(text, dst):
+        rl = safe_import("reportlab.pdfgen.canvas")
+        if not rl: raise ImportError("reportlab requis : pip install reportlab")
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen.canvas import Canvas
+        c = Canvas(str(dst), pagesize=A4); w, h = A4; y = h-40
+        c.setFont("Helvetica",10)
+        for line in text.split("\n"):
+            if y < 40: c.showPage(); y=h-40; c.setFont("Helvetica",10)
+            c.drawString(40, y, line[:120]); y -= 14
+        c.save()
+
+    @staticmethod
+    def _txt_to_docx(text, title, dst):
+        docx = safe_import("docx")
+        if not docx: raise ImportError("python-docx requis")
+        doc = docx.Document()
+        doc.add_heading(title, level=1)
+        for para in text.split("\n\n"): doc.add_paragraph(para)
+        doc.save(str(dst))
+
+    @staticmethod
+    def _table_to_pdf(rows, dst):
+        rl = safe_import("reportlab.pdfgen.canvas")
+        if not rl: raise ImportError("reportlab requis")
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.pdfgen.canvas import Canvas
+        c = Canvas(str(dst), pagesize=landscape(A4)); w,h = landscape(A4); y=h-40
+        for i,row in enumerate(rows):
+            if y<30: c.showPage(); y=h-40
+            x=40; c.setFont("Helvetica-Bold" if i==0 else "Helvetica",8)
+            for cell in row[:12]: c.drawString(x,y,str(cell)[:15]); x+=65
+            y-=14
+        c.save()
+
+
+# ══════════════════════════════════════════════════════════════
+#  APPLICATION
+# ══════════════════════════════════════════════════════════════
+class ZenkariConverter(tk.Tk):
+
+    def __init__(self):
+        super().__init__()
+        self.withdraw()          # hide while building
+        self.title("Zenkari Converter  v2.0.0")
+        self.geometry("1200x780")
+        self.minsize(1000,650)
+        self.configure(bg=C["bg"])
+
+        # State — NO tk.Var created before this point
+        self.files       = []
+        self.running     = False
+        self._anim_phase = 0
+        self._current_lang = "fr"
+        self._ui         = {}    # renamed from _w to avoid tkinter conflict
+        self._cat_frames = []
+        self._log_lines  = []    # store all log text
+
+        # Tk variables — safe to create after __init__
+        self.out_dir      = tk.StringVar()
+        self.target_ext   = tk.StringVar()
+        self.status_text  = tk.StringVar(value=t("ready"))
+        self.progress_var = tk.DoubleVar(value=0)
+        self._same_src    = tk.BooleanVar(value=False)
+
+        self._build_ui()
+        self.deiconify()         # show window
+        self._animate_border()
+
+        if not FFMPEG:
+            self._log(t("ffmpeg_missing") + "\n", "warn")
+
+    # ── BUILD UI ─────────────────────────────────────────────
+    def _build_ui(self):
+        self._build_topbar()
+        self.glow_line = tk.Frame(self, bg=C["accent"], height=2)
+        self.glow_line.pack(fill="x")
+
+        main = tk.Frame(self, bg=C["bg"])
+        main.pack(fill="both", expand=True, padx=14, pady=10)
+        main.columnconfigure(0, weight=1)
+        main.columnconfigure(1, weight=2)
+        main.rowconfigure(0, weight=1)
+
+        left = tk.Frame(main, bg=C["panel"])
+        left.grid(row=0, column=0, sticky="nsew", padx=(0,8))
+        self._build_left(left)
+
+        right = tk.Frame(main, bg=C["panel"])
+        right.grid(row=0, column=1, sticky="nsew")
+        self._build_right(right)
+
+        # Bottom bar
+        bot = tk.Frame(self, bg=C["surface"], height=36)
+        bot.pack(fill="x", side="bottom")
+        bot.pack_propagate(False)
+        lbl = tk.Label(bot, textvariable=self.status_text, font=FS, bg=C["surface"], fg=C["muted"])
+        lbl.pack(side="left", padx=14, pady=8)
+        self._ui["status_lbl"] = lbl
+        tk.Label(bot, text=f"Python {sys.version.split()[0]}  |  Zenkari Labs © 2025",
+                 font=FS, bg=C["surface"], fg=C["border"]).pack(side="right", padx=14)
+
+    def _build_topbar(self):
+        bar = tk.Frame(self, bg=C["surface"], height=56)
+        bar.pack(fill="x", side="top")
+        bar.pack_propagate(False)
+
+        tk.Label(bar, text="# ZENKARI", font=("Consolas",16,"bold"),
+                 bg=C["surface"], fg=C["accent"]).pack(side="left", padx=18, pady=10)
+        tk.Label(bar, text="CONVERTER v2.0.0", font=("Consolas",9),
+                 bg=C["surface"], fg=C["muted"]).pack(side="left", pady=16)
+
+        # Lang selector
+        lf = tk.Frame(bar, bg=C["surface"])
+        lf.pack(side="right", padx=14, pady=8)
+        lbl = tk.Label(lf, text=t("language")+" :", font=("Consolas",8,"bold"),
+                       bg=C["surface"], fg=C["accent"])
+        lbl.pack(side="left", padx=(0,6))
+        self._ui["lang_lbl"] = lbl
+
+        lang_display = list(LANG_LABELS.values())
+        self._lang_var = tk.StringVar(value=LANG_LABELS["fr"])
+        style = ttk.Style(self)
+        style.theme_use("default")
+        style.configure("Lang.TCombobox", fieldbackground=C["surface"], background=C["border"],
+                        foreground=C["text"], selectbackground=C["accent2"], selectforeground="#fff",
+                        arrowcolor=C["accent"])
+        cb = ttk.Combobox(lf, textvariable=self._lang_var, values=lang_display,
+                          state="readonly", width=17, font=("Segoe UI",9), style="Lang.TCombobox")
+        cb.pack(side="left")
+        cb.bind("<<ComboboxSelected>>", self._on_lang_change)
+
+        lbl2 = tk.Label(bar, text=t("subtitle"), font=FS, bg=C["surface"], fg=C["muted"])
+        lbl2.pack(side="right", padx=8)
+        self._ui["subtitle_lbl"] = lbl2
+
+    def _build_left(self, parent):
+        # Header
+        hdr = tk.Frame(parent, bg=C["panel"])
+        hdr.pack(fill="x", padx=12, pady=(12,4))
+        lbl = tk.Label(hdr, text=t("source_files"), font=("Consolas",9,"bold"), bg=C["panel"], fg=C["accent"])
+        lbl.pack(side="left")
+        self._ui["src_lbl"] = lbl
+        lbl2 = tk.Label(hdr, text=t("drag_hint"), font=FS, bg=C["panel"], fg=C["muted"])
+        lbl2.pack(side="right")
+        self._ui["drag_lbl"] = lbl2
+
+        # Buttons
+        br = tk.Frame(parent, bg=C["panel"])
+        br.pack(fill="x", padx=12, pady=(0,8))
+        b1 = self._btn(br, t("btn_add"),    self._add_files);  b1.pack(side="left")
+        b2 = self._btn(br, t("btn_folder"), self._add_folder); b2.pack(side="left", padx=4)
+        b3 = self._btn(br, t("btn_clear"),  self._clear_files, warn=True); b3.pack(side="right")
+        self._ui["add_btn"] = b1; self._ui["folder_btn"] = b2; self._ui["clear_btn"] = b3
+
+        tk.Frame(parent, bg=C["border"], height=1).pack(fill="x", padx=12)
+
+        # Listbox
+        lbf = tk.Frame(parent, bg=C["panel"])
+        lbf.pack(fill="both", expand=True, padx=12, pady=8)
+        sb = tk.Scrollbar(lbf, bg=C["surface"], troughcolor=C["bg"], activebackground=C["accent"])
+        sb.pack(side="right", fill="y")
+        self.listbox = tk.Listbox(lbf, bg=C["bg"], fg=C["text"], font=FM,
+                                  selectbackground=C["accent2"], selectforeground="#fff",
+                                  relief="flat", borderwidth=0, yscrollcommand=sb.set, activestyle="none")
+        self.listbox.pack(fill="both", expand=True)
+        sb.config(command=self.listbox.yview)
+        self.listbox.bind("<Delete>", self._remove_selected)
+
+        self.stat_label = tk.Label(parent, text=t("n_files",n=0), font=FS, bg=C["panel"], fg=C["muted"])
+        self.stat_label.pack(anchor="w", padx=14, pady=(0,10))
+
+    def _build_right(self, parent):
+        # ── Output dir ──
+        sec_out = tk.Frame(parent, bg=C["panel"])
+        sec_out.pack(fill="x", padx=14, pady=(14,6))
+
+        lbl_out = tk.Label(sec_out, text=t("output_dir"), font=("Consolas",8,"bold"),
+                           bg=C["panel"], fg=C["accent"])
+        lbl_out.pack(anchor="w", pady=(0,4))
+        self._ui["out_lbl"] = lbl_out
+
+        row = tk.Frame(sec_out, bg=C["panel"])
+        row.pack(fill="x")
+        self.out_entry = tk.Entry(row, textvariable=self.out_dir, bg=C["bg"], fg=C["text"],
+                                  font=FB, relief="flat", insertbackground=C["accent"],
+                                  highlightthickness=1, highlightbackground=C["border"],
+                                  highlightcolor=C["accent"])
+        self.out_entry.pack(side="left", fill="x", expand=True, ipady=6, padx=(0,6))
+        b_browse = self._btn(row, t("browse"), self._pick_outdir)
+        b_browse.pack(side="right")
+        self._ui["browse_btn"] = b_browse
+
+        cb_same = tk.Checkbutton(sec_out, text=t("same_src"), variable=self._same_src,
+                                 font=FS, bg=C["panel"], fg=C["muted"],
+                                 selectcolor=C["bg"], activebackground=C["panel"],
+                                 activeforeground=C["text"], command=self._toggle_same_src)
+        cb_same.pack(anchor="w", pady=(4,0))
+        self._ui["samesrc_cb"] = cb_same
+
+        tk.Frame(parent, bg=C["border"], height=1).pack(fill="x", padx=14, pady=6)
+
+        # ── Target format ──
+        lbl_fmt = tk.Label(parent, text=t("target_format"), font=("Consolas",8,"bold"),
+                           bg=C["panel"], fg=C["accent"])
+        lbl_fmt.pack(anchor="w", padx=14, pady=(0,4))
+        self._ui["fmt_lbl"] = lbl_fmt
+
+        cats_f = tk.Frame(parent, bg=C["panel"])
+        cats_f.pack(fill="x", padx=14, pady=(0,4))
+        self._build_format_grid(cats_f)
+
+        # Manual ext
+        row2 = tk.Frame(parent, bg=C["panel"])
+        row2.pack(fill="x", padx=14, pady=(2,6))
+        lbl_ext = tk.Label(row2, text=t("manual_ext"), font=FS, bg=C["panel"], fg=C["muted"])
+        lbl_ext.pack(side="left", padx=(0,6))
+        self._ui["manual_lbl"] = lbl_ext
+        tk.Entry(row2, textvariable=self.target_ext, width=9, bg=C["bg"], fg=C["accent"],
+                 font=("Consolas",11,"bold"), relief="flat", insertbackground=C["accent"],
+                 highlightthickness=1, highlightbackground=C["border"],
+                 highlightcolor=C["accent"]).pack(side="left", ipady=4)
+
+        tk.Frame(parent, bg=C["border"], height=1).pack(fill="x", padx=14, pady=4)
+
+        # ── Progress ──
+        pf = tk.Frame(parent, bg=C["panel"])
+        pf.pack(fill="x", padx=14, pady=(0,4))
+        self.prog_label = tk.Label(pf, text=t("ready"), font=FS, bg=C["panel"], fg=C["muted"])
+        self.prog_label.pack(anchor="w")
+        style = ttk.Style(self)
+        style.configure("Z.Horizontal.TProgressbar", troughcolor=C["bg"], background=C["accent"],
+                        lightcolor=C["accent"], darkcolor=C["accent2"], bordercolor=C["border"], thickness=8)
+        self.pbar = ttk.Progressbar(pf, variable=self.progress_var, maximum=100, style="Z.Horizontal.TProgressbar")
+        self.pbar.pack(fill="x", pady=(2,0))
+
+        # ── Convert button ──
+        self.convert_btn = self._big_btn(parent, t("convert_btn"), self._start_convert)
+        self.convert_btn.pack(fill="x", padx=14, pady=8, ipady=6)
+
+        tk.Frame(parent, bg=C["border"], height=1).pack(fill="x", padx=14)
+
+        # ── LOG AREA ── (always visible, scrollable)
+        log_hdr = tk.Frame(parent, bg=C["panel"])
+        log_hdr.pack(fill="x", padx=14, pady=(6,2))
+
+        lbl_log = tk.Label(log_hdr, text=t("log_title"), font=("Consolas",8,"bold"),
+                           bg=C["panel"], fg=C["accent"])
+        lbl_log.pack(side="left")
+        self._ui["log_lbl"] = lbl_log
+
+        # Log action buttons
+        b_copy = self._btn(log_hdr, t("log_copy"), self._copy_log)
+        b_copy.pack(side="right", padx=(4,0))
+        b_clr = self._btn(log_hdr, t("log_clear"), self._clear_log)
+        b_clr.pack(side="right")
+        self._ui["log_copy_btn"] = b_copy
+        self._ui["log_clear_btn"] = b_clr
+
+        log_frame = tk.Frame(parent, bg=C["bg"], relief="flat",
+                             highlightthickness=1, highlightbackground=C["border"])
+        log_frame.pack(fill="both", expand=True, padx=14, pady=(0,12))
+
+        log_sb = tk.Scrollbar(log_frame, bg=C["surface"], troughcolor=C["bg"],
+                              activebackground=C["accent"])
+        log_sb.pack(side="right", fill="y")
+
+        self.log_text = tk.Text(
+            log_frame,
+            bg=C["bg"], fg=C["text"],
+            font=("Consolas", 9),
+            relief="flat",
+            insertbackground=C["accent"],
+            state="disabled",
+            wrap="word",
+            yscrollcommand=log_sb.set,
+            height=8,           # always visible
+            padx=8, pady=6,
+        )
+        self.log_text.pack(fill="both", expand=True)
+        log_sb.config(command=self.log_text.yview)
+
+        self.log_text.tag_config("ok",   foreground=C["success"])
+        self.log_text.tag_config("err",  foreground=C["error"])
+        self.log_text.tag_config("info", foreground=C["accent"])
+        self.log_text.tag_config("warn", foreground=C["warning"])
+        self.log_text.tag_config("ts",   foreground=C["muted"])
+
+    def _build_format_grid(self, parent):
+        CAT_DEFS = [
+            ("cat_image",    IMAGE_EXTS,    "image"),
+            ("cat_video",    VIDEO_EXTS,    "video"),
+            ("cat_audio",    AUDIO_EXTS,    "audio"),
+            ("cat_document", DOCUMENT_EXTS, "document"),
+            ("cat_data",     DATA_EXTS,     "data"),
+            ("cat_archive",  ARCHIVE_EXTS,  "archive"),
+            ("cat_code",     CODE_EXTS,     "code"),
+            ("cat_subtitle", SUBTITLE_EXTS, "subtitle"),
+        ]
+        self._cat_frames = []
+        cols = 4
+        for i, (cat_key, exts, cat) in enumerate(CAT_DEFS):
+            col = i % cols; row_i = i // cols
+            color = CAT_COLOR.get(cat, C["accent"])
+            frm = tk.LabelFrame(parent, text=f" {t(cat_key)} ",
+                                font=("Segoe UI",8), bg=C["bg"], fg=color, relief="flat")
+            frm.grid(row=row_i, column=col, padx=3, pady=3, sticky="nsew")
+            self._cat_frames.append((frm, cat_key, color))
+            for j, ext in enumerate(sorted(exts)):
+                r_c, c_c = divmod(j, 3)
+                btn = tk.Button(frm, text=f".{ext}", font=("Consolas",7),
+                                bg=C["surface"], fg=C["text"],
+                                activebackground=color, activeforeground="#000",
+                                relief="flat", cursor="hand2", pady=1, padx=2,
+                                command=lambda e=ext: self._select_ext(e))
+                btn.grid(row=r_c, column=c_c, padx=1, pady=1, sticky="ew")
+            for ci in range(3): frm.columnconfigure(ci, weight=1)
+        for ci in range(cols): parent.columnconfigure(ci, weight=1)
+
+    # ── Language ─────────────────────────────────────────────
+    def _on_lang_change(self, _=None):
+        selected = self._lang_var.get()
+        code = next((c for c,l in LANG_LABELS.items() if l==selected), "fr")
+        self._current_lang = code
+        set_lang(code)
+        self._refresh_i18n()
+
+    def _refresh_i18n(self):
+        for k,v in [("lang_lbl", t("language")+" :"), ("subtitle_lbl", t("subtitle")),
+                    ("src_lbl", t("source_files")), ("drag_lbl", t("drag_hint")),
+                    ("out_lbl", t("output_dir")), ("fmt_lbl", t("target_format")),
+                    ("manual_lbl", t("manual_ext")), ("log_lbl", t("log_title")),
+                    ("samesrc_cb", t("same_src"))]:
+            w = self._ui.get(k)
+            if w:
+                try: w.config(text=v)
+                except: pass
+        for k,v in [("add_btn","btn_add"),("folder_btn","btn_folder"),("clear_btn","btn_clear"),
+                    ("browse_btn","browse"),("log_copy_btn","log_copy"),("log_clear_btn","log_clear")]:
+            w = self._ui.get(k)
+            if w:
+                try: w.config(text=t(v))
+                except: pass
+        if not self.running:
+            self.convert_btn.config(text=t("convert_btn"))
+        for frm, cat_key, color in self._cat_frames:
+            try: frm.config(text=f" {t(cat_key)} ")
+            except: pass
+        self.status_text.set(t("ready"))
+        self._refresh_stats()
+
+    # ── Widget helpers ────────────────────────────────────────
+    def _btn(self, parent, text, cmd, warn=False):
+        color = C["error"] if warn else C["accent2"]
+        b = tk.Button(parent, text=text, font=FS, bg=C["surface"], fg=color,
+                      activebackground=color, activeforeground="#fff",
+                      relief="flat", cursor="hand2", padx=8, pady=3, command=cmd)
+        b.bind("<Enter>", lambda e, _b=b, _c=color: _b.config(bg=_c, fg="#fff"))
+        b.bind("<Leave>", lambda e, _b=b, _c=color: _b.config(bg=C["surface"], fg=_c))
+        return b
+
+    def _big_btn(self, parent, text, cmd):
+        b = tk.Button(parent, text=text, font=("Consolas",13,"bold"),
+                      bg=C["accent"], fg="#000",
+                      activebackground=C["success"], activeforeground="#000",
+                      relief="flat", cursor="hand2", command=cmd)
+        b.bind("<Enter>", lambda e: b.config(bg=C["success"]))
+        b.bind("<Leave>", lambda e: b.config(bg=C["accent"]))
+        return b
+
+    # ── File actions ─────────────────────────────────────────
+    def _select_ext(self, ext):
+        self.target_ext.set(ext)
+        self.status_text.set(f".{ext}")
+
+    def _toggle_same_src(self):
+        if self._same_src.get():
+            self.out_entry.config(state="disabled")
+        else:
+            self.out_entry.config(state="normal")
+
+    def _add_files(self):
+        all_exts = sorted(CONVERSIONS.keys())
+        exts_str = " ".join(f"*.{e}" for e in all_exts)
+        paths = filedialog.askopenfilenames(
+            title=t("btn_add"),
+            filetypes=[("Fichiers supportés", exts_str), ("Tous les fichiers", "*.*")])
+        for p in paths:
+            path = Path(p)
+            if path not in self.files:
+                self.files.append(path)
+                cat = get_cat(path.suffix)
+                color = CAT_COLOR.get(cat, C["text"])
+                self.listbox.insert("end", f"  {path.name}")
+                self.listbox.itemconfig("end", fg=color)
+        self._refresh_stats()
+
+    def _add_folder(self):
+        folder = filedialog.askdirectory(title=t("btn_folder"))
+        if not folder: return
+        for f in Path(folder).rglob("*"):
+            if f.is_file() and f.suffix.lower().lstrip(".") in CONVERSIONS:
+                if f not in self.files:
+                    self.files.append(f)
+                    self.listbox.insert("end", f"  {f.name}")
+        self._refresh_stats()
+
+    def _clear_files(self):
+        self.files.clear(); self.listbox.delete(0,"end"); self._refresh_stats()
+
+    def _remove_selected(self, _=None):
+        for i in reversed(list(self.listbox.curselection())):
+            self.listbox.delete(i); self.files.pop(i)
+        self._refresh_stats()
+
+    def _pick_outdir(self):
+        d = filedialog.askdirectory(title=t("output_dir"))
+        if d: self.out_dir.set(d)
+
+    def _refresh_stats(self):
+        n = len(self.files)
+        cats = {}
+        for f in self.files:
+            c = get_cat(f.suffix); cats[c] = cats.get(c,0)+1
+        detail = "  ".join(f"{v} {k}" for k,v in cats.items())
+        self.stat_label.config(text=f"{t('n_files',n=n)}   {detail}")
+
+    # ── Log helpers ───────────────────────────────────────────
+    def _log(self, msg, tag="info"):
+        ts = datetime.now().strftime("%H:%M:%S")
+        line = f"[{ts}] {msg}"
+        self._log_lines.append(line)
+        def _write():
+            self.log_text.config(state="normal")
+            self.log_text.insert("end", f"[{ts}] ", "ts")
+            self.log_text.insert("end", msg, tag)
+            self.log_text.see("end")
+            self.log_text.config(state="disabled")
+        self.after(0, _write)
+
+    def _clear_log(self):
+        self._log_lines.clear()
+        self.log_text.config(state="normal")
+        self.log_text.delete("1.0","end")
+        self.log_text.config(state="disabled")
+
+    def _copy_log(self):
+        text = "\n".join(self._log_lines)
+        self.clipboard_clear()
+        self.clipboard_append(text)
+        self.status_text.set("Journal copié ✓")
+
+    # ── Conversion ───────────────────────────────────────────
+    def _start_convert(self):
+        if self.running: return
+        if not self.files:
+            messagebox.showwarning("Zenkari", t("warn_no_file")); return
+        ext = self.target_ext.get().strip().lstrip(".")
+        if not ext:
+            messagebox.showwarning("Zenkari", t("warn_no_ext")); return
+
+        if self._same_src.get():
+            out_path = None  # will use source dir per file
+        else:
+            out = self.out_dir.get().strip()
+            if not out:
+                if self.files:
+                    out = str(self.files[0].parent)
+                    self.out_dir.set(out)
+                else:
+                    messagebox.showwarning("Zenkari", t("warn_no_file")); return
+            out_path = Path(out)
+            out_path.mkdir(parents=True, exist_ok=True)
+
+        self.running = True
+        self.convert_btn.config(state="disabled", text=t("converting_btn"))
+        self.progress_var.set(0)
+        self._log(t("log_start", n=len(self.files), ext=ext), "info")
+        threading.Thread(target=self._run, args=(list(self.files), ext, out_path), daemon=True).start()
+
+    def _run(self, files, ext, out_path):
+        total = len(files); ok = err = 0
+        for idx, f in enumerate(files):
+            t0 = time.time()
+            dest = f.parent if out_path is None else out_path
+
+            def cb(pct, msg, _idx=idx):
+                overall = (_idx / total * 100) + (pct / total)
+                self.after(0, lambda p=overall, m=msg: (
+                    self.progress_var.set(p),
+                    self.prog_label.config(text=m)
+                ))
+
+            try:
+                result = Converter.convert(f, ext, dest, cb=cb)
+                elapsed = time.time() - t0
+                size = result.stat().st_size
+                size_str = f"{size/1024:.1f} KB" if size < 1024*1024 else f"{size/1024/1024:.2f} MB"
+                self._log(f"OK  {f.name}  ->  {result.name}  ({size_str}, {elapsed:.2f}s)\n", "ok")
+                ok += 1
+            except Exception as e:
+                self._log(f"ERR {f.name}  ->  {e}\n", "err")
+                err += 1
+
+        self.after(0, self._finish, ok, err, total)
+
+    def _finish(self, ok, err, total):
+        self.running = False
+        self.progress_var.set(100)
+        self.convert_btn.config(state="normal", text=t("convert_btn"))
+        tag = "ok" if err == 0 else ("warn" if ok > 0 else "err")
+        self._log(t("log_done", ok=ok, err=err, total=total), tag)
+        self.status_text.set(t("status_ok", ok=ok, err=err))
+        if err == 0:
+            messagebox.showinfo("Zenkari Converter", t("msg_success", n=ok))
+        else:
+            messagebox.showwarning("Zenkari Converter", t("msg_partial", ok=ok, err=err))
+
+    # ── Glow animation ────────────────────────────────────────
+    def _animate_border(self):
+        colors = [C["accent"], C["accent2"], C["success"], C["accent2"], C["accent"]]
+        self.glow_line.config(bg=colors[int((self._anim_phase/100)*len(colors)) % len(colors)])
+        self._anim_phase = (self._anim_phase + 1) % 100
+        self.after(80, self._animate_border)
+
+
+# ══════════════════════════════════════════════════════════════
+if __name__ == "__main__":
+    app = ZenkariConverter()
+    app.mainloop()
