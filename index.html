@@ -18,7 +18,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.6/dist/umd/ffmpeg.js"></script>
+<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;600;700;800&display=swap');
@@ -678,56 +678,51 @@ async function convConfig(file,de){
   throw new Error(`Config → .${de} non supporté`);
 }
 
-// ── 14 & 15. FFMPEG.WASM — Vidéo + Audio complets ───────────
+// ── 14 & 15. FFMPEG.WASM v0.11 — Vidéo + Audio complets ──────
 let _ffmpeg = null;
 let _ffmpegLoading = false;
 let _ffmpegReady = false;
 
-async function getFFmpeg(onProgress) {
-  if (_ffmpegReady) return _ffmpeg;
-  if (_ffmpegLoading) {
-    // Wait for it to finish loading
-    while (_ffmpegLoading) await new Promise(r => setTimeout(r, 200));
-    return _ffmpeg;
-  }
-  _ffmpegLoading = true;
-  try {
-    if (typeof FFmpeg === 'undefined' || !FFmpeg.FFmpeg) {
-      throw new Error('FFmpeg.wasm non chargé. Vérifiez votre connexion internet.');
-    }
-    _ffmpeg = new FFmpeg.FFmpeg();
-    _ffmpeg.on('log', ({message}) => {
-      // Parse progress from ffmpeg output
-      const m = message.match(/time=(\d+):(\d+):(\d+)/);
-      if (m && onProgress) onProgress(null, `ffmpeg: ${message.slice(0,60)}`);
-    });
-    _ffmpeg.on('progress', ({progress}) => {
-      if (onProgress) onProgress(Math.round(progress * 90) + 5, `ffmpeg: ${Math.round(progress*100)}%`);
-    });
-    log('Chargement FFmpeg.wasm (première fois ~20MB)…', 'warn');
-    await _ffmpeg.load({
-      coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js',
-      wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm',
-    });
-    _ffmpegReady = true;
-    log('FFmpeg.wasm chargé ✓', 'ok');
-  } catch(e) {
-    _ffmpegLoading = false;
-    throw new Error('FFmpeg.wasm : ' + e.message);
-  }
-  _ffmpegLoading = false;
-  return _ffmpeg;
-}
-
-// Mime types pour les formats
 const MEDIA_MIME = {
   mp4:'video/mp4', webm:'video/webm', avi:'video/x-msvideo',
   mkv:'video/x-matroska', mov:'video/quicktime', flv:'video/x-flv',
   wmv:'video/x-ms-wmv', '3gp':'video/3gpp', mpeg:'video/mpeg', mpg:'video/mpeg',
   mp3:'audio/mpeg', wav:'audio/wav', ogg:'audio/ogg', flac:'audio/flac',
-  aac:'audio/aac', m4a:'audio/mp4', opus:'audio/opus', wma:'audio/x-ms-wma',
-  aiff:'audio/aiff',
+  aac:'audio/aac', m4a:'audio/mp4', opus:'audio/opus', wma:'audio/x-ms-wma', aiff:'audio/aiff',
 };
+
+async function getFFmpeg(cb) {
+  if (_ffmpegReady) return _ffmpeg;
+  if (_ffmpegLoading) {
+    while (_ffmpegLoading) await new Promise(r => setTimeout(r, 300));
+    return _ffmpeg;
+  }
+  _ffmpegLoading = true;
+  try {
+    // v0.11 API: createFFmpeg is a global function from the UMD bundle
+    if (typeof createFFmpeg === 'undefined') {
+      throw new Error('FFmpeg.wasm non chargé — vérifiez votre connexion internet.');
+    }
+    _ffmpeg = createFFmpeg({
+      log: false,
+      progress: ({ratio}) => {
+        if (cb && ratio >= 0) cb(Math.round(ratio * 85) + 10, `ffmpeg: ${Math.round(ratio*100)}%`);
+      },
+      corePath: 'https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js',
+    });
+    log('Chargement FFmpeg.wasm (première fois ~25MB)…', 'warn');
+    if (cb) cb(2, 'Chargement FFmpeg.wasm…');
+    await _ffmpeg.load();
+    _ffmpegReady = true;
+    _ffmpegLoading = false;
+    log('FFmpeg.wasm chargé ✓', 'ok');
+  } catch(e) {
+    _ffmpegLoading = false;
+    _ffmpegReady = false;
+    throw new Error('FFmpeg.wasm : ' + e.message);
+  }
+  return _ffmpeg;
+}
 
 async function convMediaFFmpeg(file, de, cb) {
   const se = (file.name.split('.').pop()||'').toLowerCase();
@@ -739,52 +734,47 @@ async function convMediaFFmpeg(file, de, cb) {
   const ff = await getFFmpeg(cb);
   if (cb) cb(5, 'Lecture du fichier…');
 
-  // Write input
+  // v0.11 API: FS.writeFile
   const ab = await readBuf(file);
-  await ff.writeFile(inName, new Uint8Array(ab));
+  ff.FS('writeFile', inName, new Uint8Array(ab));
+  if (cb) cb(10, 'Conversion en cours…');
 
-  if (cb) cb(10, 'Conversion ffmpeg…');
-
-  // Build ffmpeg args
+  // Build args
   const args = ['-i', inName];
-
-  // Audio extraction from video
   const vidExts = ['mp4','webm','avi','mkv','mov','flv','wmv','3gp','mpeg','mpg'];
   const audExts = ['mp3','wav','ogg','flac','aac','m4a','opus','wma','aiff'];
-  if (vidExts.includes(se) && audExts.includes(de)) {
-    args.push('-vn'); // no video
-  }
 
-  // Codec/quality settings
-  if (de === 'mp3')  args.push('-codec:a', 'libmp3lame', '-q:a', '2');
-  else if (de === 'aac')  args.push('-codec:a', 'aac', '-b:a', '192k');
-  else if (de === 'ogg')  args.push('-codec:a', 'libvorbis', '-q:a', '4');
-  else if (de === 'opus') args.push('-codec:a', 'libopus', '-b:a', '128k');
-  else if (de === 'flac') args.push('-codec:a', 'flac');
-  else if (de === 'wav')  args.push('-codec:a', 'pcm_s16le');
-  else if (de === 'mp4')  args.push('-codec:v', 'libx264', '-preset', 'fast', '-crf', '23', '-codec:a', 'aac');
-  else if (de === 'webm') args.push('-codec:v', 'libvpx-vp9', '-crf', '30', '-b:v', '0', '-codec:a', 'libopus');
-  else if (de === 'gif')  args.push('-vf', 'fps=10,scale=480:-1:flags=lanczos', '-loop', '0');
-  else if (de === 'avi')  args.push('-codec:v', 'libx264', '-codec:a', 'mp3');
-  else if (de === 'mov')  args.push('-codec:v', 'libx264', '-codec:a', 'aac');
+  if (vidExts.includes(se) && audExts.includes(de)) args.push('-vn');
+
+  if      (de==='mp3')  args.push('-c:a','libmp3lame','-q:a','2');
+  else if (de==='aac')  args.push('-c:a','aac','-b:a','192k');
+  else if (de==='ogg')  args.push('-c:a','libvorbis','-q:a','4');
+  else if (de==='opus') args.push('-c:a','libopus','-b:a','128k');
+  else if (de==='flac') args.push('-c:a','flac');
+  else if (de==='wav')  args.push('-c:a','pcm_s16le');
+  else if (de==='mp4')  args.push('-c:v','libx264','-preset','fast','-crf','23','-c:a','aac');
+  else if (de==='webm') args.push('-c:v','libvpx','-crf','10','-b:v','0','-c:a','libvorbis');
+  else if (de==='gif')  args.push('-vf','fps=10,scale=480:-1:flags=lanczos','-loop','0');
+  else if (de==='avi')  args.push('-c:v','mpeg4','-c:a','mp3');
+  else if (de==='mov')  args.push('-c:v','libx264','-c:a','aac');
 
   args.push('-y', outFfName);
 
   try {
-    await ff.exec(args);
+    await ff.run(...args);
   } catch(e) {
-    throw new Error(`ffmpeg.wasm: ${e.message}`);
+    throw new Error('ffmpeg: ' + e.message);
   }
 
   if (cb) cb(95, 'Lecture résultat…');
-  const data = await ff.readFile(outFfName);
+  const data = ff.FS('readFile', outFfName);
 
   // Cleanup
-  try { await ff.deleteFile(inName); } catch(e) {}
-  try { await ff.deleteFile(outFfName); } catch(e) {}
+  try { ff.FS('unlink', inName); } catch(e) {}
+  try { ff.FS('unlink', outFfName); } catch(e) {}
 
-  const mime = MEDIA_MIME[de] || 'application/octet-stream';
   if (cb) cb(100, 'Done ✓');
+  const mime = MEDIA_MIME[de] || 'application/octet-stream';
   return { blob: new Blob([data.buffer], {type: mime}), name: outName };
 }
 
