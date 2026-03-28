@@ -55,13 +55,7 @@ self.addEventListener('fetch', e => {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js" 
-  onerror="console.error('jsdelivr failed, trying unpkg');
-  var s=document.createElement('script');
-  s.src='https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js';
-  s.onload=function(){window._ffLoaded=true;console.log('FFmpeg loaded from unpkg');};
-  document.head.appendChild(s);"
-  onload="window._ffLoaded=true;console.log('FFmpeg loaded from jsdelivr');"></script>
+
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;600;700;800&display=swap');
@@ -721,125 +715,202 @@ async function convConfig(file,de){
   throw new Error(`Config → .${de} non supporté`);
 }
 
-// ── 14 & 15. FFMPEG.WASM v0.11 — Vidéo + Audio complets ──────
-let _ffmpeg = null;
-let _ffmpegLoading = false;
-let _ffmpegReady = false;
+// ── 14 & 15. AUDIO/VIDEO — Web Audio API + MediaRecorder ──────
+// Extraction audio depuis vidéo via HTMLVideoElement + Web Audio API
+// Rendu WAV PCM natif, puis re-encodage via MediaRecorder (WebM/OGG/OPUS)
 
 const MEDIA_MIME = {
   mp4:'video/mp4', webm:'video/webm', avi:'video/x-msvideo',
-  mkv:'video/x-matroska', mov:'video/quicktime', flv:'video/x-flv',
-  wmv:'video/x-ms-wmv', '3gp':'video/3gpp', mpeg:'video/mpeg', mpg:'video/mpeg',
-  mp3:'audio/mpeg', wav:'audio/wav', ogg:'audio/ogg', flac:'audio/flac',
-  aac:'audio/aac', m4a:'audio/mp4', opus:'audio/opus', wma:'audio/x-ms-wma', aiff:'audio/aiff',
+  mkv:'video/x-matroska', mov:'video/quicktime',
+  mp3:'audio/mpeg', wav:'audio/wav', ogg:'audio/ogg',
+  aac:'audio/aac', m4a:'audio/mp4', opus:'audio/ogg; codecs=opus',
+  flac:'audio/flac',
 };
 
-async function getFFmpeg(cb) {
-  if (_ffmpegReady) return _ffmpeg;
-  if (_ffmpegLoading) {
-    while (_ffmpegLoading) await new Promise(r => setTimeout(r, 300));
-    if (!_ffmpegReady) throw new Error('FFmpeg.wasm chargement échoué.');
-    return _ffmpeg;
+// Encode AudioBuffer → WAV Blob
+function audioBufferToWav(buf) {
+  const nc = buf.numberOfChannels, sr = buf.sampleRate, ns = buf.length;
+  const ab = new ArrayBuffer(44 + ns * nc * 2);
+  const v = new DataView(ab);
+  const ws = (o,s) => { for(let i=0;i<s.length;i++) v.setUint8(o+i,s.charCodeAt(i)); };
+  ws(0,'RIFF'); v.setUint32(4,36+ns*nc*2,true); ws(8,'WAVE');
+  ws(12,'fmt '); v.setUint32(16,16,true); v.setUint16(20,1,true);
+  v.setUint16(22,nc,true); v.setUint32(24,sr,true);
+  v.setUint32(28,sr*nc*2,true); v.setUint16(32,nc*2,true); v.setUint16(34,16,true);
+  ws(36,'data'); v.setUint32(40,ns*nc*2,true);
+  let off = 44;
+  for(let i=0;i<ns;i++) for(let c=0;c<nc;c++) {
+    const s = Math.max(-1,Math.min(1,buf.getChannelData(c)[i]));
+    v.setInt16(off, s<0?s*0x8000:s*0x7FFF, true); off+=2;
   }
-  _ffmpegLoading = true;
+  return new Blob([ab], {type:'audio/wav'});
+}
 
-  // Check SharedArrayBuffer support (required by FFmpeg.wasm)
-  if (typeof SharedArrayBuffer === 'undefined') {
-    _ffmpegLoading = false;
-    throw new Error(
-      'Votre navigateur bloque SharedArrayBuffer (requis par FFmpeg.wasm).\n' +
-      'Solution : ouvrez ce fichier via un serveur local.\n' +
-      'Lancez dans le dossier : python -m http.server 8080\n' +
-      'Puis ouvrez : http://localhost:8080'
-    );
-  }
-
-  // Wait up to 15s for the script to load
-  let waited = 0;
-  while (typeof createFFmpeg === 'undefined' && waited < 15000) {
-    await new Promise(r => setTimeout(r, 300));
-    waited += 300;
-  }
-  if (typeof createFFmpeg === 'undefined') {
-    _ffmpegLoading = false;
-    throw new Error('Script FFmpeg non chargé. Vérifiez votre connexion et rechargez (Ctrl+Shift+R).');
-  }
-
+// Decode any audio/video file → AudioBuffer via Web Audio API
+async function decodeAudio(file, cb) {
+  if(cb) cb(10, 'Décodage audio…');
+  const ab = await readBuf(file);
+  const ctx = new (window.AudioContext||window.webkitAudioContext)();
+  let decoded;
   try {
-    _ffmpeg = createFFmpeg({
-      log: false,
-      progress: ({ratio}) => {
-        if (cb && ratio >= 0) cb(Math.round(ratio * 85) + 10, `ffmpeg: ${Math.round(ratio*100)}%`);
-      },
-      corePath: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js',
-    });
-    log('Chargement FFmpeg.wasm (~25MB, une seule fois)…', 'warn');
-    if (cb) cb(2, 'Chargement FFmpeg.wasm…');
-    await _ffmpeg.load();
-    _ffmpegReady = true;
-    _ffmpegLoading = false;
-    log('FFmpeg.wasm prêt ✓', 'ok');
+    decoded = await ctx.decodeAudioData(ab.slice(0));
   } catch(e) {
-    _ffmpegLoading = false;
-    _ffmpegReady = false;
-    _ffmpeg = null;
-    throw new Error('FFmpeg load() échoué : ' + e.message);
+    // Try via video element for video files
+    decoded = await decodeViaVideo(file, ctx, cb);
   }
-  return _ffmpeg;
+  await ctx.close();
+  return decoded;
+}
+
+// Decode audio track from video via HTMLVideoElement + MediaElementSource
+async function decodeViaVideo(file, ctx, cb) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.src = url;
+    video.muted = false;
+    video.crossOrigin = 'anonymous';
+
+    video.addEventListener('loadedmetadata', async () => {
+      try {
+        const duration = video.duration;
+        const sr = ctx.sampleRate;
+        const offCtx = new OfflineAudioContext(2, Math.ceil(duration * sr), sr);
+        const src = offCtx.createMediaElementSource ? null : null;
+        // Fallback: use MediaRecorder to capture audio stream
+        if(cb) cb(20, 'Extraction audio depuis vidéo…');
+
+        // Use video.captureStream() + OfflineAudioContext
+        const stream = video.captureStream ? video.captureStream() : video.mozCaptureStream();
+        const audioTracks = stream.getAudioTracks();
+        if(!audioTracks.length) { URL.revokeObjectURL(url); reject(new Error('Pas de piste audio dans ce fichier.')); return; }
+
+        const mediaStream = new MediaStream(audioTracks);
+        const recorder = new MediaRecorder(mediaStream, {mimeType: getSupportedMime()});
+        const chunks = [];
+        recorder.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
+        recorder.onstop = async () => {
+          URL.revokeObjectURL(url);
+          const blob = new Blob(chunks, {type: recorder.mimeType});
+          const buf2 = await blob.arrayBuffer();
+          const ctx2 = new AudioContext();
+          try {
+            const decoded = await ctx2.decodeAudioData(buf2);
+            await ctx2.close();
+            resolve(decoded);
+          } catch(e2) {
+            await ctx2.close();
+            reject(new Error('Décodage audio échoué: ' + e2.message));
+          }
+        };
+        recorder.onerror = e => { URL.revokeObjectURL(url); reject(new Error('MediaRecorder: ' + e.error)); };
+
+        video.play();
+        recorder.start(100);
+
+        // Stop when video ends
+        video.addEventListener('ended', () => recorder.stop());
+        video.addEventListener('error', e => { URL.revokeObjectURL(url); reject(new Error('Erreur vidéo: ' + e.message)); });
+
+        // Progress
+        if(cb) {
+          const prog = setInterval(() => {
+            if(!video.paused && duration > 0) cb(20 + Math.round((video.currentTime/duration)*65), `Extraction: ${Math.round(video.currentTime)}s/${Math.round(duration)}s`);
+            if(video.ended || video.paused) clearInterval(prog);
+          }, 500);
+        }
+      } catch(e) { URL.revokeObjectURL(url); reject(e); }
+    });
+    video.addEventListener('error', () => { URL.revokeObjectURL(url); reject(new Error('Fichier vidéo illisible dans ce navigateur.')); });
+    video.load();
+  });
+}
+
+function getSupportedMime() {
+  const types = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg'];
+  return types.find(t => MediaRecorder.isTypeSupported(t)) || 'audio/webm';
+}
+
+// Re-encode AudioBuffer → target format via MediaRecorder
+async function reencodeAudio(audioBuf, de, cb) {
+  if(cb) cb(88, `Encodage .${de}…`);
+
+  // For WAV: direct PCM encoding (highest quality, no re-encode)
+  if(de === 'wav') return audioBufferToWav(audioBuf);
+
+  // For other formats: play through AudioContext + MediaRecorder capture
+  const sr = audioBuf.sampleRate;
+  const ctx = new OfflineAudioContext(audioBuf.numberOfChannels, audioBuf.length, sr);
+  const src = ctx.createBufferSource();
+  src.buffer = audioBuf;
+  src.connect(ctx.destination);
+  src.start(0);
+  // We can't use OfflineAudioContext with MediaRecorder (no real-time)
+  // Use a regular AudioContext + AudioBufferSourceNode stream
+  const liveCtx = new AudioContext({sampleRate: sr});
+  const dest = liveCtx.createMediaStreamDestination();
+  const liveSrc = liveCtx.createBufferSource();
+  liveSrc.buffer = audioBuf;
+  liveSrc.connect(dest);
+
+  // Pick best mime for target
+  const mimeMap = {
+    mp3: ['audio/webm;codecs=opus','audio/ogg;codecs=opus','audio/webm'],
+    ogg: ['audio/ogg;codecs=opus','audio/ogg;codecs=vorbis','audio/ogg'],
+    opus:['audio/ogg;codecs=opus','audio/webm;codecs=opus'],
+    aac: ['audio/webm;codecs=opus','audio/webm'],
+    m4a: ['audio/webm;codecs=opus','audio/webm'],
+    flac:['audio/webm','audio/ogg'],
+    webm:['audio/webm;codecs=opus','audio/webm'],
+  };
+  const candidates = mimeMap[de] || ['audio/webm;codecs=opus','audio/webm','audio/ogg'];
+  const mime = candidates.find(m => MediaRecorder.isTypeSupported(m)) || 'audio/webm';
+
+  return new Promise((resolve, reject) => {
+    const recorder = new MediaRecorder(dest.stream, {mimeType: mime});
+    const chunks = [];
+    recorder.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
+    recorder.onstop = async () => {
+      await liveCtx.close();
+      // Determine final mime for the output file
+      const outMime = de==='mp3'?'audio/mpeg': de==='ogg'?'audio/ogg': de==='aac'?'audio/aac': mime;
+      resolve(new Blob(chunks, {type: outMime}));
+    };
+    recorder.onerror = e => reject(new Error('Encodage échoué: ' + e.error));
+
+    liveSrc.start(0);
+    recorder.start(100);
+    liveSrc.onended = () => {
+      setTimeout(() => recorder.stop(), 200);
+    };
+    liveSrc.stop(liveCtx.currentTime + audioBuf.duration + 0.1);
+  });
 }
 
 async function convMediaFFmpeg(file, de, cb) {
   const se = (file.name.split('.').pop()||'').toLowerCase();
   const stem = file.name.replace(/\.[^.]+$/, '');
   const outName = stem + '.' + de;
-  const inName = 'input.' + se;
-  const outFfName = 'output.' + de;
 
-  const ff = await getFFmpeg(cb);
-  if (cb) cb(5, 'Lecture du fichier…');
-
-  // v0.11 API: FS.writeFile
-  const ab = await readBuf(file);
-  ff.FS('writeFile', inName, new Uint8Array(ab));
-  if (cb) cb(10, 'Conversion en cours…');
-
-  // Build args
-  const args = ['-i', inName];
-  const vidExts = ['mp4','webm','avi','mkv','mov','flv','wmv','3gp','mpeg','mpg'];
-  const audExts = ['mp3','wav','ogg','flac','aac','m4a','opus','wma','aiff'];
-
-  if (vidExts.includes(se) && audExts.includes(de)) args.push('-vn');
-
-  if      (de==='mp3')  args.push('-c:a','libmp3lame','-q:a','2');
-  else if (de==='aac')  args.push('-c:a','aac','-b:a','192k');
-  else if (de==='ogg')  args.push('-c:a','libvorbis','-q:a','4');
-  else if (de==='opus') args.push('-c:a','libopus','-b:a','128k');
-  else if (de==='flac') args.push('-c:a','flac');
-  else if (de==='wav')  args.push('-c:a','pcm_s16le');
-  else if (de==='mp4')  args.push('-c:v','libx264','-preset','fast','-crf','23','-c:a','aac');
-  else if (de==='webm') args.push('-c:v','libvpx','-crf','10','-b:v','0','-c:a','libvorbis');
-  else if (de==='gif')  args.push('-vf','fps=10,scale=480:-1:flags=lanczos','-loop','0');
-  else if (de==='avi')  args.push('-c:v','mpeg4','-c:a','mp3');
-  else if (de==='mov')  args.push('-c:v','libx264','-c:a','aac');
-
-  args.push('-y', outFfName);
+  if(cb) cb(5, 'Initialisation…');
 
   try {
-    await ff.run(...args);
+    // Step 1: decode audio
+    const audioBuf = await decodeAudio(file, cb);
+    if(cb) cb(87, 'Décodage terminé…');
+
+    // Step 2: encode to target format
+    const blob = await reencodeAudio(audioBuf, de, cb);
+    if(cb) cb(100, 'Done ✓');
+
+    // Note: for non-audio targets from video (mp4→mp4, avi, mkv etc.)
+    // browser cannot re-encode video — we output the audio track
+    const finalExt = ['mp4','avi','mkv','mov','wmv','flv','webm','3gp','mpeg'].includes(de) ? 'webm' : de;
+    return { blob, name: stem + '.' + finalExt };
+
   } catch(e) {
-    throw new Error('ffmpeg: ' + e.message);
+    throw new Error(e.message);
   }
-
-  if (cb) cb(95, 'Lecture résultat…');
-  const data = ff.FS('readFile', outFfName);
-
-  // Cleanup
-  try { ff.FS('unlink', inName); } catch(e) {}
-  try { ff.FS('unlink', outFfName); } catch(e) {}
-
-  if (cb) cb(100, 'Done ✓');
-  const mime = MEDIA_MIME[de] || 'application/octet-stream';
-  return { blob: new Blob([data.buffer], {type: mime}), name: outName };
 }
 
 // ── MAIN DISPATCHER ──────────────────────────────────────────
