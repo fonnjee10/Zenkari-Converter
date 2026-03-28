@@ -894,6 +894,10 @@ async function startConvert(){
     setProgress(Math.round(i/total*100),file.name);
     document.getElementById('pcnt').textContent=`${i+1}/${total}`;
     try{
+      const cb=(pct,msg)=>{
+        const overall=Math.round(i/total*100)+(pct/total);
+        setProgress(overall,msg);
+      };
       const r=await convertFile(file,ext,cb);
       const elapsed=((performance.now()-t0)/1000).toFixed(2);
       const sz=fmtSz(r.blob.size);
