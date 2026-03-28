@@ -3,64 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Zenkari Converter v3.1 — Web</title>
-<script>
-// ── Service Worker inline — injecte COOP/COEP pour FFmpeg.wasm ──
-(function() {
-  const SW_CODE = `
-self.addEventListener('install', e => { self.skipWaiting(); });
-self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
-self.addEventListener('fetch', e => {
-  e.respondWith(
-    fetch(e.request).then(r => {
-      const headers = new Headers(r.headers);
-      headers.set('Cross-Origin-Opener-Policy', 'same-origin');
-      headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
-      headers.set('Cross-Origin-Resource-Policy', 'cross-origin');
-      return new Response(r.body, { status: r.status, statusText: r.statusText, headers });
-    }).catch(() => fetch(e.request))
-  );
-});
-`;
-  if (!('serviceWorker' in navigator)) return;
-  const blob = new Blob([SW_CODE], { type: 'application/javascript' });
-  const swURL = URL.createObjectURL(blob);
-  navigator.serviceWorker.register(swURL, { scope: '/' })
-    .then(reg => {
-      console.log('[Zenkari] Service Worker enregistré');
-      // Si le SW vient d'être installé, recharger pour activer les headers
-      if (reg.installing) {
-        reg.installing.addEventListener('statechange', function() {
-          if (this.state === 'activated') {
-            console.log('[Zenkari] SW activé — rechargement pour COOP/COEP');
-            location.reload();
-          }
-        });
-      }
-    })
-    .catch(e => console.warn('[Zenkari] SW non disponible:', e.message));
-})();
-</script>
-
-<!-- ═══════════ LIBRAIRIES JS (CDN) ═══════════
-  pdf-lib      → créer/manipuler PDF
-  xlsx         → Excel read/write
-  mammoth      → DOCX → HTML/Text
-  JSZip        → ZIP/archives
-  FileSaver    → téléchargement
-  FFmpeg.wasm  → vidéo/audio (WebAssembly, réel ffmpeg)
-══════════════════════════════════════════════ -->
+<title>Zenkari Converter v3.2 — Web</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-
-
 <style>
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;600;700;800&display=swap');
-
-:root {
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;600;700;800&display=swap');
+:root{
   --bg:#080b12;--surface:#0d1117;--panel:#111827;--panel2:#161f2e;
   --border:#1e2d40;--border2:#243447;
   --accent:#00d4ff;--a2:#7c3aed;--a3:#06ffa5;
@@ -75,60 +26,57 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Syne',
 ::-webkit-scrollbar-track{background:var(--surface)}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 ::-webkit-scrollbar-thumb:hover{background:var(--accent)}
-#cv-bg{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.3}
+canvas{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.28}
 #app{position:relative;z-index:1;display:flex;flex-direction:column;height:100vh;overflow:hidden}
 
 /* TOPBAR */
-#topbar{display:flex;align-items:center;background:var(--surface);border-bottom:1px solid var(--border);padding:0 18px;height:52px;flex-shrink:0;gap:12px}
-.logo{display:flex;align-items:center;gap:10px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:16px;color:var(--accent)}
-.logo-hex{width:26px;height:26px;background:linear-gradient(135deg,var(--accent),var(--a2));clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);animation:hspin 8s linear infinite;flex-shrink:0}
-@keyframes hspin{0%{filter:hue-rotate(0deg)}100%{filter:hue-rotate(360deg)}}
+#topbar{display:flex;align-items:center;background:var(--surface);border-bottom:1px solid var(--border);padding:0 16px;height:54px;flex-shrink:0;gap:10px}
+.logo{display:flex;align-items:center;gap:9px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:var(--accent)}
+.hex{width:26px;height:26px;background:linear-gradient(135deg,var(--accent),var(--a2));clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);animation:hs 8s linear infinite;flex-shrink:0}
+@keyframes hs{to{filter:hue-rotate(360deg)}}
 .logo-sub{font-size:9px;color:var(--muted);font-family:'JetBrains Mono',monospace;letter-spacing:.1em}
-#glow{height:2px;flex-shrink:0;background:linear-gradient(90deg,transparent,var(--accent),var(--a2),var(--a3),transparent);background-size:300% 100%;animation:gs 3s linear infinite}
+#glow-bar{height:2px;flex-shrink:0;background:linear-gradient(90deg,transparent,var(--accent),var(--a2),var(--a3),transparent);background-size:300% 100%;animation:gs 3s linear infinite}
 @keyframes gs{0%{background-position:200% 0}100%{background-position:-200% 0}}
-.topbar-btns{display:flex;align-items:center;gap:8px;margin-left:auto}
-.tb-btn{display:flex;align-items:center;gap:6px;padding:6px 13px;border-radius:6px;border:none;
-  font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;white-space:nowrap}
-.tb-dl{background:linear-gradient(135deg,var(--a2),#5b21b6);color:#fff}
-.tb-dl:hover{background:linear-gradient(135deg,#8b5cf6,var(--a2));transform:translateY(-1px);box-shadow:0 4px 14px rgba(124,58,237,.4)}
+.tb-btns{display:flex;align-items:center;gap:8px;margin-left:auto}
+.tb-btn{display:flex;align-items:center;gap:5px;padding:6px 12px;border-radius:6px;border:none;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;white-space:nowrap}
+.tb-win{background:linear-gradient(135deg,var(--a2),#5b21b6);color:#fff}
+.tb-win:hover{filter:brightness(1.2);transform:translateY(-1px)}
 .tb-yt{background:linear-gradient(135deg,#ff0000,#cc0000);color:#fff}
-.tb-yt:hover{background:linear-gradient(135deg,#ff3333,#ff0000);transform:translateY(-1px);box-shadow:0 4px 14px rgba(255,0,0,.4)}
-.lang-wrap{display:flex;align-items:center;gap:8px}
-.lang-lbl{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--accent);letter-spacing:.1em}
-select{background:var(--panel);border:1px solid var(--border2);color:var(--text);font-family:'Syne',sans-serif;font-size:12px;padding:4px 10px;border-radius:var(--r);cursor:pointer;outline:none}
+.tb-yt:hover{filter:brightness(1.2);transform:translateY(-1px)}
+.lw{display:flex;align-items:center;gap:7px;margin-left:8px}
+.ll{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--accent);letter-spacing:.1em}
+select{background:var(--panel);border:1px solid var(--border2);color:var(--text);font-family:'Syne',sans-serif;font-size:12px;padding:4px 9px;border-radius:var(--r);cursor:pointer;outline:none}
 select:focus{border-color:var(--accent)}
 
 /* MAIN */
 #main{display:grid;grid-template-columns:320px 1fr;gap:8px;padding:8px;flex:1;overflow:hidden;min-height:0}
-
-/* PANELS */
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);display:flex;flex-direction:column;overflow:hidden}
-.ph{padding:9px 13px 7px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0}
+.ph{padding:9px 12px 7px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0}
 .pt{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:var(--accent);letter-spacing:.1em}
 .phint{font-size:10px;color:var(--muted);margin-left:auto}
 
-/* DROP ZONE */
+/* LEFT */
 #drop-zone{flex:1;position:relative;display:flex;flex-direction:column;cursor:pointer;overflow:hidden}
-#drop-zone.dragover{background:rgba(0,212,255,.05)}
-#drop-ov{position:absolute;inset:0;z-index:5;display:none;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:rgba(0,212,255,.07);border:2px dashed var(--accent);border-radius:var(--r);font-size:15px;color:var(--accent);font-family:'JetBrains Mono',monospace}
-#drop-zone.dragover #drop-ov{display:flex}
-#file-list{flex:1;overflow-y:auto;padding:5px}
-.fi{display:flex;align-items:center;gap:7px;padding:6px 9px;border-radius:5px;cursor:pointer;transition:background .15s}
+#drop-zone.drag{background:rgba(0,212,255,.05)}
+#drop-ov{position:absolute;inset:0;z-index:5;display:none;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:rgba(0,212,255,.07);border:2px dashed var(--accent);border-radius:var(--r);font-size:14px;color:var(--accent);font-family:'JetBrains Mono',monospace}
+#drop-zone.drag #drop-ov{display:flex}
+#file-list{flex:1;overflow-y:auto;padding:4px}
+.fi{display:flex;align-items:center;gap:7px;padding:6px 9px;border-radius:5px;cursor:default;transition:background .12s}
 .fi:hover{background:var(--panel2)}
 .fi.sel{background:rgba(124,58,237,.15);border-left:2px solid var(--a2)}
 .fdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
 .fname{flex:1;font-size:11px;font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fsize{font-size:10px;color:var(--muted);flex-shrink:0}
-.fdel{opacity:0;font-size:13px;color:var(--err);cursor:pointer;background:none;border:none;padding:0;transition:opacity .15s;flex-shrink:0}
+.fdel{opacity:0;font-size:13px;color:var(--err);cursor:pointer;background:none;border:none;padding:0;transition:opacity .12s;flex-shrink:0}
 .fi:hover .fdel{opacity:1}
-#empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--muted);pointer-events:none}
-.ei{font-size:38px;opacity:.25}
+#empty-state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--muted);pointer-events:none}
+.ei{font-size:36px;opacity:.25}
 .et{font-size:11px;font-family:'JetBrains Mono',monospace}
 .btn-row{display:flex;gap:5px;padding:7px 9px;border-top:1px solid var(--border);flex-shrink:0}
-.stat{padding:3px 13px 5px;font-size:10px;color:var(--muted);flex-shrink:0}
+.stat{padding:3px 12px 5px;font-size:10px;color:var(--muted);flex-shrink:0;font-family:'JetBrains Mono',monospace}
 
 /* BUTTONS */
-.btn{display:flex;align-items:center;gap:4px;padding:5px 11px;border-radius:5px;border:none;font-family:'Syne',sans-serif;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn{display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:5px;border:none;font-family:'Syne',sans-serif;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s}
 .bp{background:var(--panel2);color:var(--accent);border:1px solid var(--border2)}
 .bp:hover{background:var(--accent);color:#000}
 .bd{background:var(--panel2);color:var(--err);border:1px solid var(--border2);margin-left:auto}
@@ -139,127 +87,111 @@ select:focus{border-color:var(--accent)}
 
 /* RIGHT */
 #right{display:flex;flex-direction:column;gap:8px;overflow:hidden;min-height:0}
-#out-sec{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);padding:10px 13px;flex-shrink:0}
-.stitle{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--accent);letter-spacing:.1em;margin-bottom:6px}
+#out-sec{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;flex-shrink:0}
+.stitle{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--accent);letter-spacing:.1em;margin-bottom:5px}
 .out-info{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;background:var(--surface);padding:5px 9px;border-radius:5px;border:1px solid var(--border)}
-
-/* FORMAT GRID */
 #fmt-sec{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);flex-shrink:0;overflow:hidden}
-#cat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:7px 9px 9px}
+#cat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:6px 8px 8px}
 .cbox{background:var(--surface);border:1px solid var(--border);border-radius:5px;overflow:hidden}
-.ctitle{font-size:9px;font-weight:700;padding:4px 7px 3px;font-family:'JetBrains Mono',monospace;letter-spacing:.05em;border-bottom:1px solid var(--border)}
+.ctitle{font-size:9px;font-weight:700;padding:4px 7px 3px;font-family:'JetBrains Mono',monospace;letter-spacing:.04em;border-bottom:1px solid var(--border)}
 .cexts{display:flex;flex-wrap:wrap;gap:2px;padding:4px 5px}
 .eb{background:var(--panel2);border:1px solid var(--border);color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:9px;padding:2px 5px;border-radius:3px;cursor:pointer;transition:all .15s;white-space:nowrap}
 .eb:hover{color:var(--text)}
 .eb.act{font-weight:700;color:#000!important;border-color:transparent!important}
-.manual-row{display:flex;align-items:center;gap:7px;padding:5px 13px 8px}
+.manual-row{display:flex;align-items:center;gap:7px;padding:5px 12px 8px}
 .mlbl{font-size:10px;color:var(--muted)}
 .minput{background:var(--surface);border:1px solid var(--border2);color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;padding:4px 9px;border-radius:5px;width:80px;outline:none;transition:border-color .2s}
 .minput:focus{border-color:var(--accent)}
-
-/* PROGRESS */
-#prog-sec{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);padding:10px 13px;flex-shrink:0}
+#prog-sec{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;flex-shrink:0}
 .pbwrap{background:var(--surface);border-radius:3px;height:5px;overflow:hidden;margin:6px 0 4px}
 .pbfill{height:100%;border-radius:3px;width:0%;background:linear-gradient(90deg,var(--accent),var(--a3));transition:width .3s ease}
 .plbl{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace}
 #cvt-btn{width:100%;padding:12px;background:var(--accent);color:#000;border:none;border-radius:var(--r);font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;letter-spacing:.1em;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px}
 #cvt-btn:hover:not(:disabled){background:var(--a3);transform:translateY(-1px);box-shadow:0 4px 20px rgba(0,212,255,.3)}
 #cvt-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
-
-/* LOG */
 #log-sec{background:var(--panel);border:1px solid var(--border);border-radius:var(--r);flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
-#log-content{flex:1;overflow-y:auto;padding:6px 11px;font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.9}
+#log-content{flex:1;overflow-y:auto;padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.9}
 .ll{display:flex;gap:7px}
 .lts{color:var(--dim);flex-shrink:0}
 .lok{color:var(--a3)}.lerr{color:var(--err)}.linfo{color:var(--accent)}.lwarn{color:var(--warn)}
-
-/* STATUS BAR */
 #statusbar{height:28px;background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 14px;flex-shrink:0;gap:12px}
-/* YouTube Modal */
-#yt-modal{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:600;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px)}
-#yt-modal.hidden{display:none}
-#yt-box{background:var(--panel);border:1px solid var(--border2);border-radius:14px;padding:28px 32px;width:520px;max-width:95vw;font-family:'JetBrains Mono',monospace}
-#yt-box h2{color:var(--accent);font-size:15px;margin-bottom:6px;display:flex;align-items:center;gap:8px}
-#yt-box p{color:var(--muted);font-size:10px;margin-bottom:18px;line-height:1.6}
-.yt-input{width:100%;background:var(--surface);border:1px solid var(--border2);color:var(--text);
-  font-family:'JetBrains Mono',monospace;font-size:12px;padding:10px 13px;border-radius:8px;
-  outline:none;transition:border-color .2s;margin-bottom:12px}
-.yt-input:focus{border-color:var(--accent)}
-.yt-fmt{display:flex;gap:8px;margin-bottom:16px}
-.yt-fmt-btn{flex:1;padding:9px;border-radius:7px;border:2px solid var(--border2);background:var(--surface);
-  color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s}
-.yt-fmt-btn.act{border-color:var(--accent);color:var(--accent);background:rgba(0,212,255,.08)}
-.yt-fmt-btn.act-red{border-color:#ff0000;color:#ff4444;background:rgba(255,0,0,.08)}
-.yt-actions{display:flex;gap:10px}
-.yt-go{flex:1;background:var(--accent);color:#000;border:none;border-radius:8px;padding:11px;
-  font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s}
-.yt-go:hover{background:var(--a3)}
-.yt-go.red{background:#ff0000;color:#fff}
-.yt-go.red:hover{background:#cc0000}
-.yt-close{background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:8px;
-  padding:11px 16px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:12px}
-.yt-close:hover{color:var(--text)}
-#yt-status{margin-top:12px;font-size:10px;color:var(--muted);min-height:16px;text-align:center}
-#yt-prog-wrap{background:var(--surface);border-radius:3px;height:4px;overflow:hidden;margin-top:8px;display:none}
-#yt-prog-fill{height:100%;background:linear-gradient(90deg,#ff0000,#ff6b6b);width:0%;transition:width .3s}
-.yt-services{margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
-.yt-services p{color:var(--muted);font-size:10px;margin-bottom:8px}
-.yt-svc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
-.yt-svc{background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:8px 6px;
-  text-align:center;cursor:pointer;transition:all .15s;text-decoration:none;color:var(--text);font-size:10px}
-.yt-svc:hover{border-color:var(--accent);color:var(--accent)}
-.yt-svc .svc-icon{font-size:18px;display:block;margin-bottom:3px}
 #status-txt{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);flex:1}
 #status-right{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)}
-
-/* TOASTS */
-#toasts{position:fixed;bottom:16px;right:16px;display:flex;flex-direction:column;gap:6px;z-index:999}
-.toast{background:var(--panel2);border:1px solid var(--border2);border-radius:var(--r);padding:8px 12px;font-size:11px;max-width:340px;display:flex;align-items:center;gap:8px;animation:tin .25s ease;box-shadow:0 4px 20px rgba(0,0,0,.4)}
+#toasts{position:fixed;bottom:14px;right:14px;display:flex;flex-direction:column;gap:6px;z-index:999}
+.toast{background:var(--panel2);border:1px solid var(--border2);border-radius:var(--r);padding:8px 12px;font-size:11px;max-width:340px;display:flex;align-items:center;gap:8px;animation:tin .25s ease;box-shadow:0 4px 20px rgba(0,0,0,.4);font-family:'JetBrains Mono',monospace}
 @keyframes tin{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
 .toast.ok{border-left:3px solid var(--a3)}.toast.err{border-left:3px solid var(--err)}.toast.warn{border-left:3px solid var(--warn)}
 .tdl{margin-left:auto;background:var(--a3);color:#000;border:none;border-radius:3px;padding:2px 7px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap}
 
-/* LOADING OVERLAY */
-#loading{position:fixed;inset:0;background:rgba(8,11,18,.92);z-index:800;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;backdrop-filter:blur(6px)}
-#loading.hidden{display:none}
-.spin{width:40px;height:40px;border:3px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-.load-txt{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent)}
-.load-sub{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace}
+/* YOUTUBE MODAL */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:600;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px)}
+.modal-bg.hidden{display:none}
+.modal-box{background:var(--panel);border:1px solid var(--border2);border-radius:14px;padding:26px 30px;width:520px;max-width:94vw;font-family:'JetBrains Mono',monospace}
+.modal-title{color:var(--accent);font-size:15px;margin-bottom:5px;display:flex;align-items:center;gap:8px}
+.modal-sub{color:var(--muted);font-size:10px;margin-bottom:16px;line-height:1.7}
+.yt-input{width:100%;background:var(--surface);border:1px solid var(--border2);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:9px 12px;border-radius:7px;outline:none;transition:border-color .2s;margin-bottom:11px}
+.yt-input:focus{border-color:var(--accent)}
+.fmt-row{display:flex;gap:7px;margin-bottom:14px}
+.fmt-btn{flex:1;padding:8px;border-radius:6px;border:2px solid var(--border2);background:var(--surface);color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s}
+.fmt-btn.act{border-color:var(--accent);color:var(--accent);background:rgba(0,212,255,.08)}
+.fmt-btn.act-red{border-color:#ff3333;color:#ff4444;background:rgba(255,0,0,.07)}
+.modal-actions{display:flex;gap:9px}
+.yt-go{flex:1;background:var(--accent);color:#000;border:none;border-radius:7px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s}
+.yt-go:hover{background:var(--a3)}
+.yt-go.red{background:#ff0000;color:#fff}
+.yt-go.red:hover{background:#cc0000}
+.modal-close{background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:7px;padding:10px 14px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:12px}
+.modal-close:hover{color:var(--text)}
+#yt-status{margin-top:10px;font-size:10px;color:var(--muted);min-height:14px;text-align:center}
+#yt-pb-wrap{background:var(--surface);border-radius:3px;height:4px;overflow:hidden;margin-top:7px;display:none}
+#yt-pb-fill{height:100%;background:linear-gradient(90deg,#ff0000,#ff6b6b);width:0%;transition:width .3s}
+.svc-section{margin-top:13px;padding-top:13px;border-top:1px solid var(--border)}
+.svc-title{color:var(--muted);font-size:10px;margin-bottom:8px}
+.svc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.svc-btn{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 5px;text-align:center;cursor:pointer;transition:all .15s;color:var(--text);font-size:10px;text-decoration:none;display:block}
+.svc-btn:hover{border-color:var(--accent);color:var(--accent)}
+.svc-icon{font-size:17px;display:block;margin-bottom:3px}
+.svc-tab{background:transparent;border:none;border-bottom:2px solid transparent;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:11px;padding:7px 12px;cursor:pointer;transition:all .15s;margin-bottom:-1px}
+.svc-tab:hover{color:var(--text)}
+.act-tab{color:var(--accent)!important;border-bottom-color:var(--accent)!important}
+
+/* MEDIA WARNING MODAL */
+#mw-modal{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:700;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+#mw-modal.hidden{display:none}
+#mw-box{background:var(--panel);border:2px solid var(--warn);border-radius:12px;padding:24px 26px;max-width:400px;width:92vw;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.7}
+#mw-box h3{color:var(--warn);margin-bottom:10px;font-size:14px}
+#mw-box .mw-name{color:var(--accent);margin-bottom:4px}
+#mw-box .mw-info{color:var(--muted);font-size:10px;margin-bottom:14px}
+.mw-btns{display:flex;gap:9px;margin-top:14px}
+.mw-ok{flex:1;background:var(--accent);color:#000;border:none;border-radius:6px;padding:9px;font-weight:700;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:12px}
+.mw-cancel{flex:1;background:transparent;color:var(--muted);border:1px solid var(--dim);border-radius:6px;padding:9px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:12px}
 
 @media(max-width:860px){#main{grid-template-columns:1fr;overflow-y:auto}html,body{overflow:auto}#app{height:auto}#cat-grid{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
-
-<canvas id="cv-bg"></canvas>
-
-<!-- LOADING SCREEN -->
-<div id="loading">
-  <div class="spin"></div>
-  <div class="load-txt" id="load-txt">Chargement des librairies…</div>
-  <div class="load-sub" id="load-sub">pdf-lib · xlsx · mammoth · JSZip</div>
-</div>
+<canvas id="bg-canvas"></canvas>
 
 <div id="app">
+  <!-- TOPBAR -->
   <div id="topbar">
     <div class="logo">
-      <div class="logo-hex"></div>
+      <div class="hex"></div>
       <div>
         <div># ZENKARI</div>
-        <div class="logo-sub">CONVERTER v3.1 — WEB EDITION</div>
+        <div class="logo-sub">CONVERTER v3.2 — WEB</div>
       </div>
     </div>
-    <div class="topbar-btns">
-      <button class="tb-btn tb-dl" onclick="window.open('https://github.com/fonnjee10','_blank')">
-        ⬇ Version Windows .EXE
+    <div class="tb-btns">
+      <button class="tb-btn tb-win" onclick="window.open('https://github.com/fonnjee10','_blank')">
+        ⬇ Version Windows EXE
       </button>
-      <button class="tb-btn tb-yt" onclick="openYT()">
-        ▶ YouTube → MP3 / MP4
+      <button class="tb-btn tb-yt" onclick="showYT()">
+        ▶ YouTube → MP3/MP4
       </button>
     </div>
-    <div class="lang-wrap">
-      <span class="lang-lbl" id="lbl-lang">LANGUE</span>
+    <div class="lw">
+      <span class="ll" id="lbl-lang">LANGUE</span>
       <select id="lang-sel">
         <option value="fr">🇫🇷 Français</option>
         <option value="en">🇬🇧 English</option>
@@ -279,10 +211,11 @@ select:focus{border-color:var(--accent)}
       </select>
     </div>
   </div>
-  <div id="glow"></div>
+  <div id="glow-bar"></div>
 
+  <!-- MAIN -->
   <div id="main">
-    <!-- LEFT -->
+    <!-- LEFT: files -->
     <div class="panel">
       <div class="ph">
         <span class="pt" id="lbl-src">FICHIERS SOURCE</span>
@@ -291,15 +224,18 @@ select:focus{border-color:var(--accent)}
       <div id="drop-zone">
         <div id="drop-ov"><div>⬇</div><div id="lbl-drop">Déposer ici</div></div>
         <div id="file-list">
-          <div id="empty"><div class="ei">📂</div><div class="et" id="lbl-empty">Aucun fichier</div></div>
+          <div id="empty-state">
+            <div class="ei">📂</div>
+            <div class="et" id="lbl-empty">Aucun fichier</div>
+          </div>
         </div>
       </div>
       <div class="btn-row">
-        <button class="btn bp" onclick="triggerInput()">+ <span id="lbl-add">Ajouter</span></button>
-        <button class="btn bd" onclick="clearFiles()">✕ <span id="lbl-clear">Vider</span></button>
+        <button class="btn bp" id="btn-add" onclick="pickFiles()">+ <span id="lbl-add">Ajouter</span></button>
+        <button class="btn bd" id="btn-clear" onclick="clearFiles()">✕ <span id="lbl-clear">Vider</span></button>
       </div>
-      <div class="stat" id="stat">0 fichier(s)</div>
-      <input type="file" id="finput" multiple style="display:none">
+      <div class="stat" id="stat-bar">0 fichier(s)</div>
+      <input type="file" id="file-input" multiple style="display:none">
     </div>
 
     <!-- RIGHT -->
@@ -314,19 +250,17 @@ select:focus{border-color:var(--accent)}
         <div id="cat-grid"></div>
         <div class="manual-row">
           <span class="mlbl" id="lbl-manual">Ext. manuelle :</span>
-          <input type="text" class="minput" id="mext" placeholder="jpg" maxlength="8">
+          <input type="text" class="minput" id="mext" placeholder="mp3" maxlength="8">
         </div>
       </div>
 
       <div id="prog-sec">
         <div style="display:flex;align-items:center;justify-content:space-between">
-          <span class="plbl" id="plbl">Prêt.</span>
-          <span class="plbl" id="pcnt" style="color:var(--accent)"></span>
+          <span class="plbl" id="prog-lbl">Prêt.</span>
+          <span class="plbl" id="prog-cnt" style="color:var(--accent)"></span>
         </div>
-        <div class="pbwrap"><div class="pbfill" id="pbar"></div></div>
-        <button id="cvt-btn" onclick="startConvert()">
-          <span>⚡</span><span id="lbl-cvt">CONVERTIR</span>
-        </button>
+        <div class="pbwrap"><div class="pbfill" id="prog-bar"></div></div>
+        <button id="cvt-btn" onclick="startConvert()">⚡ <span id="lbl-cvt">CONVERTIR</span></button>
       </div>
 
       <div id="log-sec" class="panel">
@@ -342,89 +276,99 @@ select:focus{border-color:var(--accent)}
 
   <div id="statusbar">
     <span id="status-txt">Prêt.</span>
-    <span id="status-right">Zenkari Labs © 2025 · v3.1 Web</span>
+    <span id="status-right">Zenkari Labs © 2025 · v3.2 Web</span>
   </div>
 </div>
+
+<!-- TOASTS -->
 <div id="toasts"></div>
 
-<!-- YOUTUBE CONVERTER MODAL -->
-<div id="yt-modal" class="hidden">
-  <div id="yt-box">
-    <h2>▶ <span style="color:#ff0000">YouTube</span> Converter</h2>
-    <p>Colle un lien YouTube et choisis le format.<br>
-    Le navigateur ne peut pas télécharger directement depuis YouTube (restrictions légales).<br>
-    Utilise un des services ci-dessous ou la version Python pour le faire localement.</p>
-
-    <input type="url" class="yt-input" id="yt-url" placeholder="https://www.youtube.com/watch?v=...">
-
-    <div class="yt-fmt">
-      <button class="yt-fmt-btn act" id="yt-mp3-btn" onclick="setYTFmt('mp3')">🎵 MP3 Audio</button>
-      <button class="yt-fmt-btn" id="yt-mp4-btn" onclick="setYTFmt('mp4')">🎬 MP4 Vidéo</button>
-      <button class="yt-fmt-btn" id="yt-wav-btn" onclick="setYTFmt('wav')">🔊 WAV Audio</button>
+<!-- YOUTUBE MODAL -->
+<div class="modal-bg hidden" id="yt-modal">
+  <div class="modal-box" style="width:680px;max-width:96vw">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div class="modal-title">▶ <span style="color:#ff3333">YouTube</span> Converter</div>
+      <button class="modal-close" onclick="hideYT()" style="padding:5px 10px">✕</button>
     </div>
 
-    <div class="yt-actions">
-      <button class="yt-go" id="yt-go-btn" onclick="ytConvert()">⚡ Convertir & Télécharger</button>
-      <button class="yt-close" onclick="closeYT()">✕</button>
+    <!-- URL input + format row -->
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <input type="url" class="yt-input" id="yt-url" placeholder="https://www.youtube.com/watch?v=..." style="margin-bottom:0;flex:1">
+      <button class="yt-go" id="yt-go" onclick="ytOpen()" style="white-space:nowrap;padding:9px 14px">⚡ Ouvrir</button>
+    </div>
+    <div class="fmt-row" style="margin-bottom:12px">
+      <button class="fmt-btn act" id="fmt-mp3" onclick="setFmt('mp3')">🎵 MP3 Audio</button>
+      <button class="fmt-btn" id="fmt-mp4" onclick="setFmt('mp4')">🎬 MP4 Vidéo</button>
+      <button class="fmt-btn" id="fmt-wav" onclick="setFmt('wav')">🔊 WAV Audio</button>
     </div>
 
-    <div id="yt-prog-wrap"><div id="yt-prog-fill"></div></div>
-    <div id="yt-status"></div>
+    <!-- Service tabs -->
+    <div style="display:flex;gap:4px;margin-bottom:0;border-bottom:1px solid var(--border)">
+      <button class="svc-tab act-tab" id="tab-cobalt"   onclick="switchTab('cobalt')"  >💎 Cobalt</button>
+      <button class="svc-tab"         id="tab-y2mate"   onclick="switchTab('y2mate')"  >⚡ Y2Mate</button>
+      <button class="svc-tab"         id="tab-yt1s"     onclick="switchTab('yt1s')"    >🔽 YT1S</button>
+      <button class="svc-tab"         id="tab-savefrom" onclick="switchTab('savefrom')">💾 SaveFrom</button>
+      <button class="svc-tab"         id="tab-loader"   onclick="switchTab('loader')"  >📥 Loader.to</button>
+    </div>
 
-    <div class="yt-services">
-      <p>🌐 Services de téléchargement YouTube (ouvrent dans un nouvel onglet) :</p>
-      <div class="yt-svc-grid">
-        <a class="yt-svc" id="svc-y2mate" href="#" target="_blank" onclick="openService('y2mate')">
-          <span class="svc-icon">⚡</span>Y2Mate
-        </a>
-        <a class="yt-svc" id="svc-cobalt" href="#" target="_blank" onclick="openService('cobalt')">
-          <span class="svc-icon">💎</span>Cobalt
-        </a>
-        <a class="yt-svc" id="svc-yt1s" href="#" target="_blank" onclick="openService('yt1s')">
-          <span class="svc-icon">🔽</span>YT1S
-        </a>
-        <a class="yt-svc" id="svc-savefrom" href="#" target="_blank" onclick="openService('savefrom')">
-          <span class="svc-icon">💾</span>SaveFrom
-        </a>
-        <a class="yt-svc" id="svc-loader" href="#" target="_blank" onclick="openService('loader')">
-          <span class="svc-icon">📥</span>Loader.to
-        </a>
-        <a class="yt-svc" id="svc-9xbuddy" href="#" target="_blank" onclick="openService('9xbuddy')">
-          <span class="svc-icon">🎯</span>9xBuddy
-        </a>
+    <!-- Embedded iframe -->
+    <div style="position:relative;width:100%;height:380px;background:var(--surface);border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
+      <iframe id="yt-frame" src="about:blank" style="width:100%;height:100%;border:none;background:#fff"
+        sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-top-navigation"></iframe>
+      <div id="yt-frame-msg" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:11px;pointer-events:none">
+        <div style="font-size:32px">▶</div>
+        <div>Colle un lien YouTube et clique <b style="color:var(--accent)">⚡ Ouvrir</b></div>
+        <div style="font-size:10px;color:var(--dim)">Le service s'ouvrira ici avec ton lien pré-rempli</div>
       </div>
+    </div>
+    <div style="margin-top:8px;font-size:9px;color:var(--dim);font-family:'JetBrains Mono',monospace;text-align:center">
+      Si le service bloque l'iframe → <a id="yt-open-tab" href="#" target="_blank" style="color:var(--accent)">Ouvrir dans un nouvel onglet</a>
+    </div>
+  </div>
+</div>
+
+<!-- MEDIA WARNING MODAL -->
+<div id="mw-modal" class="hidden">
+  <div id="mw-box">
+    <h3>⚠ Conversion temps réel</h3>
+    <div class="mw-name" id="mw-name"></div>
+    <div class="mw-info" id="mw-info"></div>
+    <div class="mw-btns">
+      <button class="mw-ok" id="mw-ok">⚡ Continuer</button>
+      <button class="mw-cancel" id="mw-cancel">✕ Annuler</button>
     </div>
   </div>
 </div>
 
 <script>
 'use strict';
-/* ═══════════════════════════════════════════════════
+
+/* ════════════════════════════════════════════
    I18N — 15 LANGUES
-═══════════════════════════════════════════════════ */
-const I18N={
-  fr:{src:"FICHIERS SOURCE",drag:"ou glisser-déposer →",drop:"Déposer ici",empty:"Aucun fichier",add:"Ajouter",clear:"Vider",out:"SORTIE",outInfo:"Fichiers convertis téléchargés automatiquement.",fmt:"FORMAT CIBLE",manual:"Ext. manuelle :",cvt:"CONVERTIR",cvting:"EN COURS…",log:"JOURNAL",lang:"LANGUE",ready:"Prêt.",noFile:"Aucun fichier sélectionné.",noExt:"Choisissez un format cible.",ok:"{n} fichier(s) converti(s) ✓",partial:"{ok} OK, {err} erreur(s).",logS:"=== Démarrage {n} → .{ext} ===",logD:"=== Terminé : {ok} OK, {err} erreur(s) / {total} ===",cp:"📄 Copier",cl:"🗑 Effacer",dl:"Télécharger",nf:"{n} fichier(s)",loading:"Chargement…"},
-  en:{src:"SOURCE FILES",drag:"or drag & drop →",drop:"Drop here",empty:"No files",add:"Add",clear:"Clear",out:"OUTPUT",outInfo:"Converted files downloaded automatically.",fmt:"TARGET FORMAT",manual:"Manual ext:",cvt:"CONVERT",cvting:"CONVERTING…",log:"LOG",lang:"LANGUAGE",ready:"Ready.",noFile:"No file selected.",noExt:"Choose a target format.",ok:"{n} file(s) converted ✓",partial:"{ok} OK, {err} error(s).",logS:"=== Starting {n} → .{ext} ===",logD:"=== Done: {ok} OK, {err} error(s) / {total} ===",cp:"📄 Copy",cl:"🗑 Clear",dl:"Download",nf:"{n} file(s)",loading:"Loading…"},
-  es:{src:"ARCHIVOS FUENTE",drag:"o arrastrar →",drop:"Soltar aquí",empty:"Sin archivos",add:"Añadir",clear:"Vaciar",out:"SALIDA",outInfo:"Archivos convertidos descargados automáticamente.",fmt:"FORMATO DESTINO",manual:"Ext. manual:",cvt:"CONVERTIR",cvting:"EN CURSO…",log:"REGISTRO",lang:"IDIOMA",ready:"Listo.",noFile:"Sin archivo.",noExt:"Elige un formato.",ok:"{n} convertido(s) ✓",partial:"{ok} OK, {err} error(es).",logS:"=== Inicio {n} → .{ext} ===",logD:"=== Hecho: {ok} OK, {err} errores / {total} ===",cp:"📄 Copiar",cl:"🗑 Borrar",dl:"Descargar",nf:"{n} archivo(s)",loading:"Cargando…"},
-  de:{src:"QUELLDATEIEN",drag:"oder drag & drop →",drop:"Hier ablegen",empty:"Keine Dateien",add:"Hinzufügen",clear:"Leeren",out:"AUSGABE",outInfo:"Konvertierte Dateien werden automatisch heruntergeladen.",fmt:"ZIELFORMAT",manual:"Erweiterung:",cvt:"KONVERTIEREN",cvting:"LÄUFT…",log:"PROTOKOLL",lang:"SPRACHE",ready:"Bereit.",noFile:"Keine Datei.",noExt:"Zielformat wählen.",ok:"{n} Datei(en) konvertiert ✓",partial:"{ok} OK, {err} Fehler.",logS:"=== Start {n} → .{ext} ===",logD:"=== Fertig: {ok} OK, {err} Fehler / {total} ===",cp:"📄 Kopieren",cl:"🗑 Löschen",dl:"Herunterladen",nf:"{n} Datei(en)",loading:"Laden…"},
-  it:{src:"FILE SORGENTE",drag:"o trascina →",drop:"Rilascia qui",empty:"Nessun file",add:"Aggiungi",clear:"Svuota",out:"OUTPUT",outInfo:"File convertiti scaricati automaticamente.",fmt:"FORMATO DEST.",manual:"Est. manuale:",cvt:"CONVERTI",cvting:"IN CORSO…",log:"REGISTRO",lang:"LINGUA",ready:"Pronto.",noFile:"Nessun file.",noExt:"Scegli un formato.",ok:"{n} file convertiti ✓",partial:"{ok} OK, {err} errore/i.",logS:"=== Avvio {n} → .{ext} ===",logD:"=== Fine: {ok} OK, {err} errori / {total} ===",cp:"📄 Copia",cl:"🗑 Cancella",dl:"Scarica",nf:"{n} file",loading:"Caricamento…"},
-  pt:{src:"ARQUIVOS FONTE",drag:"ou arrastar →",drop:"Soltar aqui",empty:"Sem arquivos",add:"Adicionar",clear:"Limpar",out:"SAÍDA",outInfo:"Arquivos convertidos baixados automaticamente.",fmt:"FORMATO ALVO",manual:"Ext. manual:",cvt:"CONVERTER",cvting:"EM ANDAMENTO…",log:"LOG",lang:"IDIOMA",ready:"Pronto.",noFile:"Nenhum arquivo.",noExt:"Escolha um formato.",ok:"{n} arquivo(s) convertido(s) ✓",partial:"{ok} OK, {err} erro(s).",logS:"=== Início {n} → .{ext} ===",logD:"=== Concluído: {ok} OK, {err} erro(s) / {total} ===",cp:"📄 Copiar",cl:"🗑 Limpar",dl:"Baixar",nf:"{n} arquivo(s)",loading:"Carregando…"},
-  ru:{src:"ИСХОДНЫЕ ФАЙЛЫ",drag:"или перетащите →",drop:"Отпустите здесь",empty:"Нет файлов",add:"Добавить",clear:"Очистить",out:"ВЫВОД",outInfo:"Конвертированные файлы загрузятся автоматически.",fmt:"ЦЕЛЕВОЙ ФОРМАТ",manual:"Расширение:",cvt:"КОНВЕРТИРОВАТЬ",cvting:"В ПРОЦЕССЕ…",log:"ЖУРНАЛ",lang:"ЯЗЫК",ready:"Готово.",noFile:"Файл не выбран.",noExt:"Выберите формат.",ok:"{n} файл(ов) конвертировано ✓",partial:"{ok} OK, {err} ошибок.",logS:"=== Старт {n} → .{ext} ===",logD:"=== Готово: {ok} OK, {err} ошибок / {total} ===",cp:"📄 Копировать",cl:"🗑 Очистить",dl:"Скачать",nf:"{n} файл(ов)",loading:"Загрузка…"},
-  zh:{src:"源文件",drag:"或拖放 →",drop:"拖放到这里",empty:"无文件",add:"添加",clear:"清空",out:"输出",outInfo:"转换后的文件将自动下载。",fmt:"目标格式",manual:"手动扩展名：",cvt:"转换",cvting:"转换中…",log:"日志",lang:"语言",ready:"就绪。",noFile:"未选择文件。",noExt:"请选择目标格式。",ok:"{n} 个文件转换成功 ✓",partial:"{ok} 成功, {err} 个错误。",logS:"=== 开始 {n} → .{ext} ===",logD:"=== 完成: {ok} 成功, {err} 错误 / {total} ===",cp:"📄 复制",cl:"🗑 清除",dl:"下载",nf:"{n} 个文件",loading:"加载中…"},
-  ja:{src:"ソースファイル",drag:"またはドラッグ →",drop:"ここにドロップ",empty:"ファイルなし",add:"追加",clear:"クリア",out:"出力",outInfo:"変換されたファイルは自動的にダウンロードされます。",fmt:"ターゲット形式",manual:"手動拡張子：",cvt:"変換",cvting:"変換中…",log:"ログ",lang:"言語",ready:"準備完了。",noFile:"ファイルが選択されていません。",noExt:"形式を選択してください。",ok:"{n} ファイル変換完了 ✓",partial:"{ok} 成功, {err} エラー。",logS:"=== 開始 {n} → .{ext} ===",logD:"=== 完了: {ok} 成功, {err} エラー / {total} ===",cp:"📄 コピー",cl:"🗑 クリア",dl:"ダウンロード",nf:"{n} ファイル",loading:"読み込み中…"},
-  ar:{src:"الملفات المصدر",drag:"أو اسحب →",drop:"أفلت هنا",empty:"لا ملفات",add:"إضافة",clear:"مسح",out:"الإخراج",outInfo:"سيتم تنزيل الملفات المحولة تلقائياً.",fmt:"الصيغة المستهدفة",manual:"الامتداد:",cvt:"تحويل",cvting:"جارٍ…",log:"السجل",lang:"اللغة",ready:"جاهز.",noFile:"لم يتم تحديد ملف.",noExt:"اختر صيغة.",ok:"{n} ملف تم تحويله ✓",partial:"{ok} ناجح، {err} خطأ.",logS:"=== بدء {n} → .{ext} ===",logD:"=== اكتمل: {ok} ناجح، {err} خطأ / {total} ===",cp:"📄 نسخ",cl:"🗑 مسح",dl:"تنزيل",nf:"{n} ملف",loading:"جارٍ التحميل…"},
-  ko:{src:"소스 파일",drag:"또는 드래그 →",drop:"여기에 놓기",empty:"파일 없음",add:"추가",clear:"지우기",out:"출력",outInfo:"변환된 파일은 자동으로 다운로드됩니다.",fmt:"대상 형식",manual:"수동 확장자:",cvt:"변환",cvting:"변환 중…",log:"로그",lang:"언어",ready:"준비됨.",noFile:"파일이 없습니다.",noExt:"형식을 선택하세요.",ok:"{n}개 파일 변환 완료 ✓",partial:"{ok} 성공, {err} 오류.",logS:"=== 시작 {n} → .{ext} ===",logD:"=== 완료: {ok} 성공, {err} 오류 / {total} ===",cp:"📄 복사",cl:"🗑 지우기",dl:"다운로드",nf:"{n} 파일",loading:"로딩 중…"},
-  nl:{src:"BRONBESTANDEN",drag:"of slepen →",drop:"Hier neerzetten",empty:"Geen bestanden",add:"Toevoegen",clear:"Wissen",out:"UITVOER",outInfo:"Geconverteerde bestanden worden automatisch gedownload.",fmt:"DOELFORMAAT",manual:"Extensie:",cvt:"CONVERTEREN",cvting:"BEZIG…",log:"LOGBOEK",lang:"TAAL",ready:"Klaar.",noFile:"Geen bestand.",noExt:"Kies een doelformaat.",ok:"{n} bestand(en) geconverteerd ✓",partial:"{ok} OK, {err} fout(en).",logS:"=== Start {n} → .{ext} ===",logD:"=== Klaar: {ok} OK, {err} fouten / {total} ===",cp:"📄 Kopiëren",cl:"🗑 Wissen",dl:"Downloaden",nf:"{n} bestand(en)",loading:"Laden…"},
-  pl:{src:"PLIKI ŹRÓDŁOWE",drag:"lub przeciągnij →",drop:"Upuść tutaj",empty:"Brak plików",add:"Dodaj",clear:"Wyczyść",out:"WYJŚCIE",outInfo:"Skonwertowane pliki zostaną automatycznie pobrane.",fmt:"FORMAT DOCELOWY",manual:"Rozszerzenie:",cvt:"KONWERTUJ",cvting:"W TOKU…",log:"DZIENNIK",lang:"JĘZYK",ready:"Gotowy.",noFile:"Brak pliku.",noExt:"Wybierz format.",ok:"{n} plik(ów) przekonwertowanych ✓",partial:"{ok} OK, {err} błąd(ów).",logS:"=== Start {n} → .{ext} ===",logD:"=== Gotowe: {ok} OK, {err} błędy / {total} ===",cp:"📄 Kopiuj",cl:"🗑 Wyczyść",dl:"Pobierz",nf:"{n} plik(ów)",loading:"Ładowanie…"},
-  tr:{src:"KAYNAK DOSYALAR",drag:"veya sürükle →",drop:"Buraya bırak",empty:"Dosya yok",add:"Ekle",clear:"Temizle",out:"ÇIKTI",outInfo:"Dönüştürülen dosyalar otomatik indirilecek.",fmt:"HEDEF FORMAT",manual:"Uzantı:",cvt:"DÖNÜŞTÜR",cvting:"DEVAM EDİYOR…",log:"GÜNLÜK",lang:"DİL",ready:"Hazır.",noFile:"Dosya seçilmedi.",noExt:"Format seçin.",ok:"{n} dosya dönüştürüldü ✓",partial:"{ok} OK, {err} hata.",logS:"=== Başlangıç {n} → .{ext} ===",logD:"=== Bitti: {ok} OK, {err} hata / {total} ===",cp:"📄 Kopyala",cl:"🗑 Temizle",dl:"İndir",nf:"{n} dosya",loading:"Yükleniyor…"},
-  sv:{src:"KÄLLFILER",drag:"eller dra →",drop:"Släpp här",empty:"Inga filer",add:"Lägg till",clear:"Rensa",out:"UTDATA",outInfo:"Konverterade filer laddas ned automatiskt.",fmt:"MÅLFORMAT",manual:"Tillägg:",cvt:"KONVERTERA",cvting:"PÅGÅR…",log:"LOGG",lang:"SPRÅK",ready:"Redo.",noFile:"Ingen fil vald.",noExt:"Välj ett målformat.",ok:"{n} fil(er) konverterade ✓",partial:"{ok} OK, {err} fel.",logS:"=== Start {n} → .{ext} ===",logD:"=== Klar: {ok} OK, {err} fel / {total} ===",cp:"📄 Kopiera",cl:"🗑 Rensa",dl:"Ladda ned",nf:"{n} fil(er)",loading:"Laddar…"},
+════════════════════════════════════════════ */
+const I18N = {
+  fr:{src:"FICHIERS SOURCE",drag:"ou glisser-déposer →",drop:"Déposer ici",empty:"Aucun fichier",add:"Ajouter",clear:"Vider",out:"SORTIE",outInfo:"Fichiers convertis téléchargés automatiquement.",fmt:"FORMAT CIBLE",manual:"Ext. manuelle :",cvt:"CONVERTIR",cvting:"EN COURS…",log:"JOURNAL",lang:"LANGUE",ready:"Prêt.",noFile:"Aucun fichier.",noExt:"Choisissez un format.",ok:"{n} converti(s) ✓",partial:"{ok} OK, {err} erreur(s).",logS:"=== {n} fichier(s) → .{ext} ===",logD:"=== Terminé {ok} OK / {err} err / {total} ===",cp:"📄 Copier",cl:"🗑 Effacer",dl:"Télécharger",nf:"{n} fichier(s)"},
+  en:{src:"SOURCE FILES",drag:"or drag & drop →",drop:"Drop here",empty:"No files",add:"Add",clear:"Clear",out:"OUTPUT",outInfo:"Converted files auto-downloaded.",fmt:"TARGET FORMAT",manual:"Manual ext:",cvt:"CONVERT",cvting:"CONVERTING…",log:"LOG",lang:"LANGUAGE",ready:"Ready.",noFile:"No file.",noExt:"Choose a format.",ok:"{n} converted ✓",partial:"{ok} OK, {err} error(s).",logS:"=== {n} file(s) → .{ext} ===",logD:"=== Done {ok} OK / {err} err / {total} ===",cp:"📄 Copy",cl:"🗑 Clear",dl:"Download",nf:"{n} file(s)"},
+  es:{src:"ARCHIVOS FUENTE",drag:"o arrastrar →",drop:"Soltar aquí",empty:"Sin archivos",add:"Añadir",clear:"Vaciar",out:"SALIDA",outInfo:"Archivos convertidos descargados automáticamente.",fmt:"FORMATO DESTINO",manual:"Ext. manual:",cvt:"CONVERTIR",cvting:"EN CURSO…",log:"REGISTRO",lang:"IDIOMA",ready:"Listo.",noFile:"Sin archivo.",noExt:"Elige un formato.",ok:"{n} convertido(s) ✓",partial:"{ok} OK, {err} error(es).",logS:"=== {n} → .{ext} ===",logD:"=== {ok} OK / {err} err / {total} ===",cp:"📄 Copiar",cl:"🗑 Borrar",dl:"Descargar",nf:"{n} archivo(s)"},
+  de:{src:"QUELLDATEIEN",drag:"drag & drop →",drop:"Hier ablegen",empty:"Keine Dateien",add:"Hinzufügen",clear:"Leeren",out:"AUSGABE",outInfo:"Konvertierte Dateien werden heruntergeladen.",fmt:"ZIELFORMAT",manual:"Erweiterung:",cvt:"KONVERTIEREN",cvting:"LÄUFT…",log:"PROTOKOLL",lang:"SPRACHE",ready:"Bereit.",noFile:"Keine Datei.",noExt:"Zielformat wählen.",ok:"{n} konvertiert ✓",partial:"{ok} OK, {err} Fehler.",logS:"=== {n} → .{ext} ===",logD:"=== {ok} OK / {err} Fehler / {total} ===",cp:"📄 Kopieren",cl:"🗑 Löschen",dl:"Herunterladen",nf:"{n} Datei(en)"},
+  it:{src:"FILE SORGENTE",drag:"o trascina →",drop:"Rilascia qui",empty:"Nessun file",add:"Aggiungi",clear:"Svuota",out:"OUTPUT",outInfo:"File convertiti scaricati automaticamente.",fmt:"FORMATO DEST.",manual:"Est. manuale:",cvt:"CONVERTI",cvting:"IN CORSO…",log:"REGISTRO",lang:"LINGUA",ready:"Pronto.",noFile:"Nessun file.",noExt:"Scegli un formato.",ok:"{n} convertiti ✓",partial:"{ok} OK, {err} errore/i.",logS:"=== {n} → .{ext} ===",logD:"=== {ok} OK / {err} err / {total} ===",cp:"📄 Copia",cl:"🗑 Cancella",dl:"Scarica",nf:"{n} file"},
+  pt:{src:"ARQUIVOS FONTE",drag:"ou arrastar →",drop:"Soltar aqui",empty:"Sem arquivos",add:"Adicionar",clear:"Limpar",out:"SAÍDA",outInfo:"Arquivos convertidos baixados automaticamente.",fmt:"FORMATO ALVO",manual:"Ext. manual:",cvt:"CONVERTER",cvting:"CONVERTENDO…",log:"LOG",lang:"IDIOMA",ready:"Pronto.",noFile:"Nenhum arquivo.",noExt:"Escolha um formato.",ok:"{n} convertido(s) ✓",partial:"{ok} OK, {err} erro(s).",logS:"=== {n} → .{ext} ===",logD:"=== {ok} OK / {err} err / {total} ===",cp:"📄 Copiar",cl:"🗑 Limpar",dl:"Baixar",nf:"{n} arquivo(s)"},
+  ru:{src:"ИСХОДНЫЕ ФАЙЛЫ",drag:"или перетащите →",drop:"Отпустите здесь",empty:"Нет файлов",add:"Добавить",clear:"Очистить",out:"ВЫВОД",outInfo:"Конвертированные файлы загрузятся автоматически.",fmt:"ЦЕЛЕВОЙ ФОРМАТ",manual:"Расширение:",cvt:"КОНВЕРТИРОВАТЬ",cvting:"В ПРОЦЕССЕ…",log:"ЖУРНАЛ",lang:"ЯЗЫК",ready:"Готово.",noFile:"Файл не выбран.",noExt:"Выберите формат.",ok:"{n} конвертировано ✓",partial:"{ok} OK, {err} ошибок.",logS:"=== {n} → .{ext} ===",logD:"=== {ok} OK / {err} / {total} ===",cp:"📄 Копировать",cl:"🗑 Очистить",dl:"Скачать",nf:"{n} файл(ов)"},
+  zh:{src:"源文件",drag:"或拖放 →",drop:"拖放到这里",empty:"无文件",add:"添加",clear:"清空",out:"输出",outInfo:"转换后的文件将自动下载。",fmt:"目标格式",manual:"手动扩展名：",cvt:"转换",cvting:"转换中…",log:"日志",lang:"语言",ready:"就绪。",noFile:"未选择文件。",noExt:"请选择格式。",ok:"{n} 转换成功 ✓",partial:"{ok} 成功, {err} 错误。",logS:"=== {n} → .{ext} ===",logD:"=== {ok} OK / {err} / {total} ===",cp:"📄 复制",cl:"🗑 清除",dl:"下载",nf:"{n} 个文件"},
+  ja:{src:"ソースファイル",drag:"またはドラッグ →",drop:"ここにドロップ",empty:"ファイルなし",add:"追加",clear:"クリア",out:"出力",outInfo:"変換されたファイルは自動的にダウンロードされます。",fmt:"ターゲット形式",manual:"手動拡張子：",cvt:"変換",cvting:"変換中…",log:"ログ",lang:"言語",ready:"準備完了。",noFile:"ファイルなし。",noExt:"形式を選択。",ok:"{n} 変換完了 ✓",partial:"{ok} 成功, {err} エラー。",logS:"=== {n} → .{ext} ===",logD:"=== {ok} OK / {err} / {total} ===",cp:"📄 コピー",cl:"🗑 クリア",dl:"ダウンロード",nf:"{n} ファイル"},
+  ar:{src:"الملفات المصدر",drag:"أو اسحب →",drop:"أفلت هنا",empty:"لا ملفات",add:"إضافة",clear:"مسح",out:"الإخراج",outInfo:"سيتم تنزيل الملفات المحولة تلقائياً.",fmt:"الصيغة المستهدفة",manual:"الامتداد:",cvt:"تحويل",cvting:"جارٍ…",log:"السجل",lang:"اللغة",ready:"جاهز.",noFile:"لا ملف.",noExt:"اختر صيغة.",ok:"{n} تم تحويله ✓",partial:"{ok} ناجح، {err} خطأ.",logS:"=== {n} → .{ext} ===",logD:"=== {ok} / {err} / {total} ===",cp:"📄 نسخ",cl:"🗑 مسح",dl:"تنزيل",nf:"{n} ملف"},
+  ko:{src:"소스 파일",drag:"또는 드래그 →",drop:"여기에 놓기",empty:"파일 없음",add:"추가",clear:"지우기",out:"출력",outInfo:"변환된 파일은 자동으로 다운로드됩니다.",fmt:"대상 형식",manual:"수동 확장자:",cvt:"변환",cvting:"변환 중…",log:"로그",lang:"언어",ready:"준비됨.",noFile:"파일 없음.",noExt:"형식 선택.",ok:"{n}개 변환 ✓",partial:"{ok} OK, {err} 오류.",logS:"=== {n} → .{ext} ===",logD:"=== {ok} / {err} / {total} ===",cp:"📄 복사",cl:"🗑 지우기",dl:"다운로드",nf:"{n} 파일"},
+  nl:{src:"BRONBESTANDEN",drag:"of slepen →",drop:"Hier neerzetten",empty:"Geen bestanden",add:"Toevoegen",clear:"Wissen",out:"UITVOER",outInfo:"Geconverteerde bestanden worden gedownload.",fmt:"DOELFORMAAT",manual:"Extensie:",cvt:"CONVERTEREN",cvting:"BEZIG…",log:"LOGBOEK",lang:"TAAL",ready:"Klaar.",noFile:"Geen bestand.",noExt:"Kies een formaat.",ok:"{n} geconverteerd ✓",partial:"{ok} OK, {err} fout(en).",logS:"=== {n} → .{ext} ===",logD:"=== {ok} / {err} / {total} ===",cp:"📄 Kopiëren",cl:"🗑 Wissen",dl:"Downloaden",nf:"{n} bestand(en)"},
+  pl:{src:"PLIKI ŹRÓDŁOWE",drag:"lub przeciągnij →",drop:"Upuść tutaj",empty:"Brak plików",add:"Dodaj",clear:"Wyczyść",out:"WYJŚCIE",outInfo:"Skonwertowane pliki zostaną pobrane.",fmt:"FORMAT DOCELOWY",manual:"Rozszerzenie:",cvt:"KONWERTUJ",cvting:"W TOKU…",log:"DZIENNIK",lang:"JĘZYK",ready:"Gotowy.",noFile:"Brak pliku.",noExt:"Wybierz format.",ok:"{n} przekonwertowanych ✓",partial:"{ok} OK, {err} błąd(ów).",logS:"=== {n} → .{ext} ===",logD:"=== {ok} / {err} / {total} ===",cp:"📄 Kopiuj",cl:"🗑 Wyczyść",dl:"Pobierz",nf:"{n} plik(ów)"},
+  tr:{src:"KAYNAK DOSYALAR",drag:"veya sürükle →",drop:"Buraya bırak",empty:"Dosya yok",add:"Ekle",clear:"Temizle",out:"ÇIKTI",outInfo:"Dönüştürülen dosyalar otomatik indirilecek.",fmt:"HEDEF FORMAT",manual:"Uzantı:",cvt:"DÖNÜŞTÜR",cvting:"DEVAM EDİYOR…",log:"GÜNLÜK",lang:"DİL",ready:"Hazır.",noFile:"Dosya yok.",noExt:"Format seçin.",ok:"{n} dönüştürüldü ✓",partial:"{ok} OK, {err} hata.",logS:"=== {n} → .{ext} ===",logD:"=== {ok} / {err} / {total} ===",cp:"📄 Kopyala",cl:"🗑 Temizle",dl:"İndir",nf:"{n} dosya"},
+  sv:{src:"KÄLLFILER",drag:"eller dra →",drop:"Släpp här",empty:"Inga filer",add:"Lägg till",clear:"Rensa",out:"UTDATA",outInfo:"Konverterade filer laddas ned automatiskt.",fmt:"MÅLFORMAT",manual:"Tillägg:",cvt:"KONVERTERA",cvting:"PÅGÅR…",log:"LOGG",lang:"SPRÅK",ready:"Redo.",noFile:"Ingen fil.",noExt:"Välj format.",ok:"{n} konverterade ✓",partial:"{ok} OK, {err} fel.",logS:"=== {n} → .{ext} ===",logD:"=== {ok} / {err} / {total} ===",cp:"📄 Kopiera",cl:"🗑 Rensa",dl:"Ladda ned",nf:"{n} fil(er)"},
 };
 let LANG='fr';
-function T(k,v={}){let s=(I18N[LANG]||I18N.fr)[k]||k;for(const[a,b]of Object.entries(v))s=s.replaceAll(`{${a}}`,b);return s;}
+const T=(k,v={})=>{let s=(I18N[LANG]||I18N.fr)[k]||k;for(const[a,b]of Object.entries(v))s=s.replaceAll(`{${a}}`,b);return s;};
 
-/* ═══════════════════════════════════════════════════
-   FORMAT CATALOGUE — TOUTES LES CONVERSIONS
-═══════════════════════════════════════════════════ */
+/* ════════════════════════════════════════════
+   FORMAT CATALOGUE
+════════════════════════════════════════════ */
 const CATS={
   image:   {label:'🖼 Images',   color:'var(--img)', exts:['png','jpg','jpeg','bmp','gif','webp','tiff','ico','svg']},
   video:   {label:'🎬 Vidéo',    color:'var(--vid)', exts:['mp4','webm','avi','mkv','mov','flv','wmv','3gp','mpeg']},
@@ -438,36 +382,36 @@ const CATS={
 const CAT_OF={};
 for(const[cat,d]of Object.entries(CATS))for(const e of d.exts)CAT_OF[e]=cat;
 
-/* ═══════════════════════════════════════════════════
+/* ════════════════════════════════════════════
    STATE
-═══════════════════════════════════════════════════ */
+════════════════════════════════════════════ */
 let files=[],fid=0,selExt='',running=false,logLines=[];
 
-/* ═══════════════════════════════════════════════════
-   CANVAS BG
-═══════════════════════════════════════════════════ */
+/* ════════════════════════════════════════════
+   CANVAS BACKGROUND
+════════════════════════════════════════════ */
 (()=>{
-  const cv=document.getElementById('cv-bg'),ctx=cv.getContext('2d');
+  const cv=document.getElementById('bg-canvas'),ctx=cv.getContext('2d');
   let W,H,P=[];
-  const resize=()=>{W=cv.width=window.innerWidth;H=cv.height=window.innerHeight;};
-  resize();window.addEventListener('resize',resize);
-  for(let i=0;i<70;i++)P.push({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.25,vy:(Math.random()-.5)*.25,r:Math.random()*1.2+.4,c:Math.random()<.5?'#00d4ff':'#7c3aed',l:Math.random()*Math.PI*2});
+  const resize=()=>{W=cv.width=innerWidth;H=cv.height=innerHeight;};
+  resize();addEventListener('resize',resize);
+  for(let i=0;i<65;i++)P.push({x:Math.random()*1920,y:Math.random()*1080,vx:(Math.random()-.5)*.22,vy:(Math.random()-.5)*.22,r:Math.random()*1.2+.4,c:Math.random()<.5?'#00d4ff':'#7c3aed',l:Math.random()*6.28});
   function draw(){
     ctx.clearRect(0,0,W,H);
     P.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.l+=.003;if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;
-      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle=p.c;ctx.globalAlpha=Math.sin(p.l)*.35+.08;ctx.fill();});
+      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle=p.c;ctx.globalAlpha=Math.sin(p.l)*.3+.07;ctx.fill();});
     ctx.globalAlpha=1;
     for(let i=0;i<P.length;i++)for(let j=i+1;j<P.length;j++){
       const dx=P[i].x-P[j].x,dy=P[i].y-P[j].y,d=Math.sqrt(dx*dx+dy*dy);
-      if(d<90){ctx.beginPath();ctx.moveTo(P[i].x,P[i].y);ctx.lineTo(P[j].x,P[j].y);ctx.strokeStyle='#00d4ff';ctx.globalAlpha=(1-d/90)*.06;ctx.lineWidth=.4;ctx.stroke();}
+      if(d<85){ctx.beginPath();ctx.moveTo(P[i].x,P[i].y);ctx.lineTo(P[j].x,P[j].y);ctx.strokeStyle='#00d4ff';ctx.globalAlpha=(1-d/85)*.055;ctx.lineWidth=.4;ctx.stroke();}
     }
     ctx.globalAlpha=1;requestAnimationFrame(draw);
   }draw();
 })();
 
-/* ═══════════════════════════════════════════════════
+/* ════════════════════════════════════════════
    FORMAT GRID
-═══════════════════════════════════════════════════ */
+════════════════════════════════════════════ */
 function buildGrid(){
   const g=document.getElementById('cat-grid');g.innerHTML='';
   for(const[cat,d]of Object.entries(CATS)){
@@ -475,71 +419,70 @@ function buildGrid(){
     const tit=document.createElement('div');tit.className='ctitle';tit.textContent=d.label;tit.style.color=d.color;box.appendChild(tit);
     const exts=document.createElement('div');exts.className='cexts';
     for(const ext of d.exts){
-      const b=document.createElement('button');b.className='eb';b.id=`e-${ext}`;b.textContent=`.${ext}`;
-      b.style.color=d.color;b.style.borderColor=d.color+'44';
-      b.addEventListener('click',()=>selectExt(ext));exts.appendChild(b);
+      const b=document.createElement('button');b.className='eb';b.id='e-'+ext;b.textContent='.'+ext;
+      b.style.color=d.color;b.style.borderColor=d.color+'40';
+      b.onclick=()=>pickExt(ext);exts.appendChild(b);
     }
     box.appendChild(exts);g.appendChild(box);
   }
 }
-function selectExt(ext){
-  document.querySelectorAll('.eb').forEach(b=>{b.classList.remove('act');});
-  const b=document.getElementById(`e-${ext}`);
+function pickExt(ext){
+  document.querySelectorAll('.eb').forEach(b=>b.classList.remove('act'));
+  const b=document.getElementById('e-'+ext);
   if(b){b.classList.add('act');const cat=CAT_OF[ext]||'image';b.style.background=CATS[cat]?.color||'var(--accent)';}
   selExt=ext;document.getElementById('mext').value=ext;
 }
 document.getElementById('mext').addEventListener('input',function(){
   const v=this.value.trim().toLowerCase().replace(/^\./,'');
-  selExt=v;document.querySelectorAll('.eb').forEach(b=>b.classList.remove('act'));
-  const b=document.getElementById(`e-${v}`);if(b){b.click();}
+  selExt=v;
+  document.querySelectorAll('.eb').forEach(b=>b.classList.remove('act'));
+  const b=document.getElementById('e-'+v);if(b){b.classList.add('act');const cat=CAT_OF[v]||'image';b.style.background=CATS[cat]?.color||'var(--accent)';}
 });
 
-/* ═══════════════════════════════════════════════════
+/* ════════════════════════════════════════════
    FILE MANAGEMENT
-═══════════════════════════════════════════════════ */
-function fmtSz(b){if(b<1024)return b+'B';if(b<1048576)return(b/1024).toFixed(1)+'KB';return(b/1048576).toFixed(2)+'MB';}
-function getCatColor(ext){const cat=CAT_OF[ext.toLowerCase().replace(/^\./,'')];return CATS[cat]?.color||'var(--accent)';}
+════════════════════════════════════════════ */
+const fmtSz=b=>b<1024?b+'B':b<1048576?(b/1024).toFixed(1)+'KB':(b/1048576).toFixed(2)+'MB';
+const getColor=ext=>{const cat=CAT_OF[(ext||'').toLowerCase().replace(/^\./,'')];return CATS[cat]?.color||'var(--accent)';};
 
 function renderFiles(){
-  const list=document.getElementById('file-list'),empty=document.getElementById('empty');
+  const list=document.getElementById('file-list'),emp=document.getElementById('empty-state');
   list.querySelectorAll('.fi').forEach(e=>e.remove());
-  if(!files.length){empty.style.display='flex';return;}
-  empty.style.display='none';
-  for(const{file,id}of files){
-    const ext=file.name.split('.').pop()||'';const color=getCatColor(ext);
+  if(!files.length){emp.style.display='flex';return;}
+  emp.style.display='none';
+  files.forEach(({file,id})=>{
+    const ext=file.name.split('.').pop()||'';
     const el=document.createElement('div');el.className='fi';el.dataset.id=id;
-    el.innerHTML=`<div class="fdot" style="background:${color}"></div><div class="fname" title="${file.name}">${file.name}</div><div class="fsize">${fmtSz(file.size)}</div><button class="fdel" onclick="rmFile(${id})">✕</button>`;
+    el.innerHTML=`<div class="fdot" style="background:${getColor(ext)}"></div><div class="fname" title="${file.name}">${file.name}</div><div class="fsize">${fmtSz(file.size)}</div><button class="fdel" onclick="rmFile(${id})">✕</button>`;
+    el.onclick=e=>{if(!e.target.classList.contains('fdel')){document.querySelectorAll('.fi').forEach(i=>i.classList.remove('sel'));el.classList.add('sel');}};
     list.appendChild(el);
-  }
+  });
   updStats();
 }
 function updStats(){
   const n=files.length,cats={};
   files.forEach(({file})=>{const e=file.name.split('.').pop()||'';const c=CAT_OF[e]||'doc';cats[c]=(cats[c]||0)+1;});
-  const d=Object.entries(cats).map(([k,v])=>`${v} ${k}`).join('  ');
-  document.getElementById('stat').textContent=`${T('nf',{n})}   ${d}`;
+  document.getElementById('stat-bar').textContent=T('nf',{n})+'  '+Object.entries(cats).map(([k,v])=>`${v} ${k}`).join('  ');
 }
-function addFiles(fl){for(const f of fl)if(!files.find(e=>e.file.name===f.name&&e.file.size===f.size))files.push({file:f,id:++fid});renderFiles();}
-window.rmFile=function(id){files=files.filter(e=>e.id!==id);renderFiles();};
+function addFiles(fl){
+  for(const f of fl)if(!files.find(e=>e.file.name===f.name&&e.file.size===f.size))files.push({file:f,id:++fid});
+  renderFiles();
+}
+window.rmFile=id=>{files=files.filter(e=>e.id!==id);renderFiles();};
 function clearFiles(){files=[];renderFiles();}
-function triggerInput(){document.getElementById('finput').click();}
-document.getElementById('finput').addEventListener('change',e=>{addFiles(e.target.files);e.target.value='';});
+function pickFiles(){document.getElementById('file-input').click();}
+document.getElementById('file-input').onchange=e=>{addFiles(e.target.files);e.target.value='';};
 const dz=document.getElementById('drop-zone');
-dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover');});
-dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));
-dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragover');addFiles(e.dataTransfer.files);});
-dz.addEventListener('click',e=>{if(!e.target.closest('.fi'))triggerInput();});
-document.getElementById('file-list').addEventListener('click',e=>{
-  const it=e.target.closest('.fi');if(!it)return;
-  document.querySelectorAll('.fi').forEach(i=>i.classList.remove('sel'));it.classList.add('sel');
-});
+dz.ondragover=e=>{e.preventDefault();dz.classList.add('drag');};
+dz.ondragleave=()=>dz.classList.remove('drag');
+dz.ondrop=e=>{e.preventDefault();dz.classList.remove('drag');addFiles(e.dataTransfer.files);};
+dz.onclick=e=>{if(!e.target.closest('.fi')&&!e.target.classList.contains('fdel'))pickFiles();};
 
-/* ═══════════════════════════════════════════════════
+/* ════════════════════════════════════════════
    LOG
-═══════════════════════════════════════════════════ */
+════════════════════════════════════════════ */
 function log(msg,type='info'){
-  const now=new Date();
-  const ts=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  const ts=new Date().toTimeString().slice(0,8);
   logLines.push(`[${ts}] ${msg}`);
   const c=document.getElementById('log-content');
   const l=document.createElement('div');l.className='ll';
@@ -547,537 +490,390 @@ function log(msg,type='info'){
   c.appendChild(l);c.scrollTop=c.scrollHeight;
 }
 function clearLog(){logLines=[];document.getElementById('log-content').innerHTML='';}
-function copyLog(){navigator.clipboard.writeText(logLines.join('\n')).then(()=>setStatus('Journal copié ✓'));}
-
-/* ═══════════════════════════════════════════════════
-   TOAST + DOWNLOAD
-═══════════════════════════════════════════════════ */
-function dlBlob(blob,name){saveAs(blob,name);}
+function copyLog(){navigator.clipboard?.writeText(logLines.join('\n'));setStatus('Journal copié ✓');}
+function setStatus(msg){document.getElementById('status-txt').textContent=msg;}
+function setProg(pct,lbl){
+  document.getElementById('prog-bar').style.width=Math.min(100,pct)+'%';
+  if(lbl)document.getElementById('prog-lbl').textContent=lbl;
+}
 function toast(msg,type='ok',blob=null,name=''){
   const c=document.getElementById('toasts'),el=document.createElement('div');
-  el.className=`toast ${type}`;el.innerHTML=`<span style="flex:1">${msg}</span>`;
-  if(blob&&name){const b=document.createElement('button');b.className='tdl';b.textContent=T('dl');b.onclick=()=>dlBlob(blob,name);el.appendChild(b);}
-  c.appendChild(el);setTimeout(()=>el.remove(),9000);
-}
-function setStatus(msg){document.getElementById('status-txt').textContent=msg;}
-function setProgress(pct,lbl=''){
-  document.getElementById('pbar').style.width=pct+'%';
-  if(lbl)document.getElementById('plbl').textContent=lbl;
+  el.className='toast '+type;el.innerHTML=`<span style="flex:1">${msg}</span>`;
+  if(blob&&name){const b=document.createElement('button');b.className='tdl';b.textContent=T('dl');b.onclick=()=>saveAs(blob,name);el.appendChild(b);}
+  c.appendChild(el);setTimeout(()=>el.remove(),8000);
 }
 
-/* ═══════════════════════════════════════════════════
+/* ════════════════════════════════════════════
    HELPERS
-═══════════════════════════════════════════════════ */
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-function readText(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsText(file,'UTF-8');});}
-function readBuf(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsArrayBuffer(file);});}
-function blobToDataUrl(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsDataURL(blob);});}
+════════════════════════════════════════════ */
+const readText=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsText(f,'UTF-8');});
+const readBuf=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsArrayBuffer(f);});
+const blobToUrl=b=>new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsDataURL(b);});
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-/* ═══════════════════════════════════════════════════
-   CONVERSION ENGINE — TOUTES LES CONVERSIONS
-═══════════════════════════════════════════════════ */
+/* ════════════════════════════════════════════
+   CONVERSIONS
+════════════════════════════════════════════ */
 
-// ── 1. IMAGE → IMAGE / PDF (Canvas API) ─────────────────────
-async function convImage(file,de){
+// ── Image → Image/PDF/SVG ─────────────────
+async function convImg(file,de){
+  const stem=file.name.replace(/\.[^.]+$/,'');
+  if(de==='svg'){
+    const blob=await convImg(file,'png');const du=await blobToUrl(blob);
+    const img=await new Promise((res,rej)=>{const i=new Image(),u=URL.createObjectURL(blob);i.onload=()=>{URL.revokeObjectURL(u);res(i);};i.onerror=rej;i.src=u;});
+    const svg=`<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${img.naturalWidth}" height="${img.naturalHeight}"><image xlink:href="${du}" width="${img.naturalWidth}" height="${img.naturalHeight}"/></svg>`;
+    return {blob:new Blob([svg],{type:'image/svg+xml'}),name:stem+'.svg'};
+  }
   return new Promise((res,rej)=>{
     const img=new Image(),url=URL.createObjectURL(file);
     img.onload=async()=>{
-      const cv=document.createElement('canvas');
-      cv.width=img.naturalWidth;cv.height=img.naturalHeight;
+      const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;
       const ctx=cv.getContext('2d');
       if(['jpg','jpeg','bmp'].includes(de)){ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);}
       ctx.drawImage(img,0,0);URL.revokeObjectURL(url);
       if(de==='pdf'){
-        // Embed image in PDF via pdf-lib
         try{
-          const pngBlob=await new Promise(r=>cv.toBlob(r,'image/png'));
-          const ab=await pngBlob.arrayBuffer();
-          const pdfDoc=await PDFLib.PDFDocument.create();
-          const pngImg=await pdfDoc.embedPng(ab);
-          const {width:iw,height:ih}=pngImg.scale(1);
-          const page=pdfDoc.addPage([iw,ih]);
-          page.drawImage(pngImg,{x:0,y:0,width:iw,height:ih});
-          const bytes=await pdfDoc.save();
-          res(new Blob([bytes],{type:'application/pdf'}));
-        }catch(e){rej(e);}
-        return;
+          const pb=await new Promise(r=>cv.toBlob(r,'image/png'));
+          const ab=await pb.arrayBuffer();
+          const doc=await PDFLib.PDFDocument.create();
+          const pi=await doc.embedPng(ab);
+          const {width:iw,height:ih}=pi.scale(1);
+          const pg=doc.addPage([iw,ih]);pg.drawImage(pi,{x:0,y:0,width:iw,height:ih});
+          const bytes=await doc.save();
+          res({blob:new Blob([bytes],{type:'application/pdf'}),name:stem+'.pdf'});
+        }catch(e){rej(e);}return;
       }
-      const m={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',bmp:'image/bmp',tiff:'image/tiff',tif:'image/tiff',ico:'image/x-icon'};
+      const m={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',webp:'image/webp',bmp:'image/bmp',tiff:'image/tiff',ico:'image/x-icon'};
       const q=['jpg','jpeg','webp'].includes(de)?0.92:undefined;
-      cv.toBlob(b=>b?res(b):rej(new Error('Canvas toBlob failed')),m[de]||'image/png',q);
+      cv.toBlob(b=>b?res({blob:b,name:stem+'.'+de}):rej(new Error('Canvas failed')),m[de]||'image/png',q);
     };
-    img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('Image load failed'));};
-    img.src=url;
+    img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('Image load failed'));};img.src=url;
   });
 }
 
-// ── 2. IMAGE → SVG (embed raster in SVG wrapper) ───────────
-async function imgToSvg(file){
+// ── TXT/Code → html/md/pdf/txt ────────────
+async function convText(file,se,de){
   const stem=file.name.replace(/\.[^.]+$/,'');
-  const blob=await convImage(file,'png');
-  const du=await blobToDataUrl(blob);
-  const img=await new Promise((res,rej)=>{const i=new Image(),u=URL.createObjectURL(blob);i.onload=()=>{URL.revokeObjectURL(u);res(i);};i.onerror=rej;i.src=u;});
-  const svg=`<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${img.naturalWidth}" height="${img.naturalHeight}"><image xlink:href="${du}" width="${img.naturalWidth}" height="${img.naturalHeight}"/></svg>`;
-  return {blob:new Blob([svg],{type:'image/svg+xml'}), name:stem+'.svg'};
+  const text=await readText(file);
+  if(de==='html'){const h=`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:monospace;background:#0a0c10;color:#e2e8f0;padding:2rem}pre{background:#111520;border:1px solid #1e2535;border-radius:8px;padding:1.5rem;overflow:auto;white-space:pre-wrap}h1{color:#00d4ff;font-size:1rem;margin-bottom:1rem}</style></head><body><h1>${esc(file.name)}</h1><pre>${esc(text)}</pre></body></html>`;return{blob:new Blob([h],{type:'text/html'}),name:stem+'.html'};}
+  if(de==='md')return{blob:new Blob([`# ${file.name}\n\n\`\`\`${se}\n${text}\n\`\`\`\n`],{type:'text/plain'}),name:stem+'.md'};
+  if(de==='pdf'){const b=await txtToPdf(text,file.name);return{blob:b,name:stem+'.pdf'};}
+  if(de==='docx'){const b=await txtToDocx(text,file.name);return{blob:b,name:stem+'.docx'};}
+  return{blob:new Blob([text],{type:'text/plain'}),name:stem+'.'+de};
 }
 
-// ── 3. TXT / CODE → various ──────────────────────────────────
-function textToHtmlBlob(text,filename,lang='text'){
-  const h=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(filename)}</title><style>body{font-family:monospace;background:#0a0c10;color:#e2e8f0;padding:2rem}pre{background:#111520;border:1px solid #1e2535;border-radius:8px;padding:1.5rem;overflow:auto;white-space:pre-wrap}h1{color:#00d4ff;font-size:1rem;margin-bottom:1rem}</style></head><body><h1>${esc(filename)} (${esc(lang)})</h1><pre>${esc(text)}</pre></body></html>`;
-  return new Blob([h],{type:'text/html'});
+// ── Markdown ──────────────────────────────
+async function convMd(file,de){
+  const stem=file.name.replace(/\.[^.]+$/,'');
+  const text=await readText(file);
+  const html=text.replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^# (.+)$/gm,'<h1>$1</h1>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\*(.+?)\*/g,'<em>$1</em>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\[(.+?)\]\((.+?)\)/g,'<a href="$2">$1</a>');
+  const full=`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;max-width:800px;margin:2rem auto;line-height:1.7}code{background:#f4f4f4;padding:.2em .4em;border-radius:3px}pre{background:#f4f4f4;padding:1rem;border-radius:6px;overflow:auto}</style></head><body>${html}</body></html>`;
+  if(de==='html')return{blob:new Blob([full],{type:'text/html'}),name:stem+'.html'};
+  if(de==='txt')return{blob:new Blob([text],{type:'text/plain'}),name:stem+'.txt'};
+  if(de==='pdf'){const b=await txtToPdf(text,file.name);return{blob:b,name:stem+'.pdf'};}
+  if(de==='docx'){const b=await txtToDocx(text,file.name);return{blob:b,name:stem+'.docx'};}
+  return{blob:new Blob([text],{type:'text/plain'}),name:stem+'.'+de};
 }
-function mdToHtml(md){
-  return md
-    .replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^# (.+)$/gm,'<h1>$1</h1>')
-    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\*(.+?)\*/g,'<em>$1</em>')
-    .replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\[(.+?)\]\((.+?)\)/g,'<a href="$2">$1</a>')
-    .replace(/^- (.+)$/gm,'<li>$1</li>').replace(/^---$/gm,'<hr>');
-}
-function htmlToText(html){const d=document.createElement('div');d.innerHTML=html;return d.textContent||'';}
 
-// ── 4. TXT → PDF (pdf-lib) ───────────────────────────────────
-async function txtToPdf(text,title='Document'){
+// ── HTML ──────────────────────────────────
+async function convHtml(file,de){
+  const stem=file.name.replace(/\.[^.]+$/,'');
+  const text=await readText(file);
+  const plain=(()=>{const d=document.createElement('div');d.innerHTML=text;return d.textContent||'';})();
+  if(de==='txt')return{blob:new Blob([plain],{type:'text/plain'}),name:stem+'.txt'};
+  if(de==='md')return{blob:new Blob([`# Converti depuis HTML\n\n${plain}`],{type:'text/plain'}),name:stem+'.md'};
+  if(de==='pdf'){const b=await txtToPdf(plain,file.name);return{blob:b,name:stem+'.pdf'};}
+  return{blob:new Blob([text],{type:'text/html'}),name:stem+'.html'};
+}
+
+// ── DOCX ──────────────────────────────────
+async function convDocx(file,de){
+  if(typeof mammoth==='undefined')throw new Error('mammoth.js non disponible (CDN)');
+  const stem=file.name.replace(/\.[^.]+$/,'');
+  const ab=await readBuf(file);
+  if(de==='html'){const r=await mammoth.convertToHtml({arrayBuffer:ab});return{blob:new Blob([`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;max-width:800px;margin:2rem auto;line-height:1.7}</style></head><body>${r.value}</body></html>`],{type:'text/html'}),name:stem+'.html'};}
+  const r=await mammoth.extractRawText({arrayBuffer:ab});
+  if(de==='txt')return{blob:new Blob([r.value],{type:'text/plain'}),name:stem+'.txt'};
+  if(de==='md')return{blob:new Blob([`# ${stem}\n\n${r.value}`],{type:'text/plain'}),name:stem+'.md'};
+  if(de==='pdf'){const b=await txtToPdf(r.value,file.name);return{blob:b,name:stem+'.pdf'};}
+  throw new Error(`DOCX → .${de} non supporté`);
+}
+
+// ── XLSX/XLS ──────────────────────────────
+async function convXlsx(file,de){
+  if(typeof XLSX==='undefined')throw new Error('SheetJS non disponible (CDN)');
+  const stem=file.name.replace(/\.[^.]+$/,'');
+  const ab=await readBuf(file);
+  const wb=XLSX.read(ab,{type:'array'});const ws=wb.Sheets[wb.SheetNames[0]];
+  if(de==='csv')return{blob:new Blob([XLSX.utils.sheet_to_csv(ws)],{type:'text/csv'}),name:stem+'.csv'};
+  if(de==='json'){const d=XLSX.utils.sheet_to_json(ws,{defval:''});return{blob:new Blob([JSON.stringify(d,null,2)],{type:'application/json'}),name:stem+'.json'};}
+  if(de==='html')return{blob:new Blob([XLSX.utils.sheet_to_html(ws)],{type:'text/html'}),name:stem+'.html'};
+  if(de==='txt')return{blob:new Blob([XLSX.utils.sheet_to_csv(ws).replace(/,/g,'\t')],{type:'text/plain'}),name:stem+'.txt'};
+  if(de==='pdf'){const b=await txtToPdf(XLSX.utils.sheet_to_csv(ws),file.name);return{blob:b,name:stem+'.pdf'};}
+  if(de==='xlsx'||de==='xls'){const out=XLSX.write(wb,{bookType:de,type:'array'});return{blob:new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),name:stem+'.'+de};}
+  throw new Error(`Excel → .${de} non supporté`);
+}
+
+// ── CSV ───────────────────────────────────
+async function convCsv(file,de){
+  const stem=file.name.replace(/\.[^.]+$/,'');
+  const text=await readText(file);
+  if(de==='json'){
+    const lines=text.split('\n').filter(l=>l.trim());if(!lines.length)return{blob:new Blob(['[]'],{type:'application/json'}),name:stem+'.json'};
+    const h=lines[0].split(',').map(v=>v.trim().replace(/^"|"$/g,''));
+    const rows=lines.slice(1).map(l=>{const v=l.split(',').map(v=>v.trim().replace(/^"|"$/g,''));return Object.fromEntries(h.map((k,i)=>[k,v[i]||'']));});
+    return{blob:new Blob([JSON.stringify(rows,null,2)],{type:'application/json'}),name:stem+'.json'};
+  }
+  if(de==='xlsx'||de==='xls'){
+    if(typeof XLSX==='undefined')throw new Error('SheetJS non disponible');
+    const ws=XLSX.utils.aoa_to_sheet(text.split('\n').map(l=>l.split(',')));
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Sheet1');
+    const out=XLSX.write(wb,{bookType:de,type:'array'});
+    return{blob:new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),name:stem+'.'+de};
+  }
+  if(de==='html'){
+    const rows=text.split('\n').filter(l=>l.trim()).map(l=>l.split(','));
+    const tb=rows.map((r,i)=>`<tr>${r.map(c=>`<t${i?'d':'h'} style="border:1px solid #ddd;padding:6px;${i?'':'background:#333;color:#fff'}">${esc(c.replace(/^"|"$/g,''))}</t${i?'d':'h'}>`).join('')}</tr>`).join('');
+    return{blob:new Blob([`<!DOCTYPE html><html><head><meta charset="utf-8"><style>table{border-collapse:collapse;font-family:sans-serif}</style></head><body><table>${tb}</table></body></html>`],{type:'text/html'}),name:stem+'.html'};
+  }
+  if(de==='txt')return{blob:new Blob([text.replace(/,/g,'\t')],{type:'text/plain'}),name:stem+'.txt'};
+  if(de==='pdf'){const b=await txtToPdf(text,file.name);return{blob:b,name:stem+'.pdf'};}
+  throw new Error(`CSV → .${de} non supporté`);
+}
+
+// ── JSON ──────────────────────────────────
+async function convJson(file,de){
+  const stem=file.name.replace(/\.[^.]+$/,'');
+  const text=await readText(file);
+  let data;try{data=JSON.parse(text);}catch(e){throw new Error('JSON invalide');}
+  const yamlStr=obj=>{
+    if(obj===null)return'null';if(typeof obj==='boolean'||typeof obj==='number')return String(obj);
+    if(typeof obj==='string')return obj;
+    if(Array.isArray(obj))return obj.map((v,i)=>`- ${yamlStr(v)}`).join('\n');
+    return Object.entries(obj).map(([k,v])=>typeof v==='object'&&v!==null?`${k}:\n${String(yamlStr(v)).split('\n').map(l=>'  '+l).join('\n')}`:`${k}: ${yamlStr(v)}`).join('\n');
+  };
+  if(de==='yaml')return{blob:new Blob([yamlStr(data)],{type:'text/yaml'}),name:stem+'.yaml'};
+  if(de==='csv'){
+    const arr=Array.isArray(data)?data:[data];if(!arr.length||typeof arr[0]!=='object')return{blob:new Blob([JSON.stringify(data,null,2)],{type:'text/plain'}),name:stem+'.csv'};
+    const h=Object.keys(arr[0]);const rows=[h.join(','),...arr.map(r=>h.map(k=>`"${String(r[k]||'').replace(/"/g,'""')}"`).join(','))];
+    return{blob:new Blob([rows.join('\n')],{type:'text/csv'}),name:stem+'.csv'};
+  }
+  if(de==='xlsx'||de==='xls'){
+    if(typeof XLSX==='undefined')throw new Error('SheetJS non disponible');
+    const arr=Array.isArray(data)?data:[data];const ws=XLSX.utils.json_to_sheet(arr);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Sheet1');
+    const out=XLSX.write(wb,{bookType:de,type:'array'});return{blob:new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),name:stem+'.'+de};
+  }
+  if(de==='html')return{blob:new Blob([`<!DOCTYPE html><html><body><pre>${esc(JSON.stringify(data,null,2))}</pre></body></html>`],{type:'text/html'}),name:stem+'.html'};
+  if(de==='txt')return{blob:new Blob([JSON.stringify(data,null,2)],{type:'text/plain'}),name:stem+'.txt'};
+  if(de==='pdf'){const b=await txtToPdf(JSON.stringify(data,null,2),file.name);return{blob:b,name:stem+'.pdf'};}
+  throw new Error(`JSON → .${de} non supporté`);
+}
+
+// ── XML ───────────────────────────────────
+async function convXml(file,de){
+  const stem=file.name.replace(/\.[^.]+$/,'');const text=await readText(file);
+  if(de==='json'){
+    const p=new DOMParser(),doc=p.parseFromString(text,'text/xml');
+    function e2o(n){if(n.nodeType===3)return n.textContent.trim();const o={};for(const a of n.attributes||[])o['@'+a.name]=a.value;for(const c of n.childNodes){const k=c.nodeName,v=e2o(c);if(!v&&v!==0)continue;o[k]=o[k]?[].concat(o[k],v):v;}return o;}
+    return{blob:new Blob([JSON.stringify(e2o(doc.documentElement),null,2)],{type:'application/json'}),name:stem+'.json'};
+  }
+  if(de==='txt'){const d=document.createElement('div');d.innerHTML=text;return{blob:new Blob([d.textContent],{type:'text/plain'}),name:stem+'.txt'};}
+  if(de==='html')return{blob:new Blob([`<!DOCTYPE html><html><body><pre>${esc(text)}</pre></body></html>`],{type:'text/html'}),name:stem+'.html'};
+  throw new Error(`XML → .${de} non supporté`);
+}
+
+// ── ZIP ───────────────────────────────────
+async function convZip(file,de){
+  if(typeof JSZip==='undefined')throw new Error('JSZip non disponible');
+  const stem=file.name.replace(/\.[^.]+$/,'');
+  const ab=await readBuf(file);const zip=await JSZip.loadAsync(ab);
+  if(de==='txt'){return{blob:new Blob([Object.keys(zip.files).join('\n')],{type:'text/plain'}),name:stem+'.txt'};}
+  const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
+  return{blob,name:stem+'.zip'};
+}
+
+// ── Subtitles ─────────────────────────────
+async function convSub(file,se,de){
+  const stem=file.name.replace(/\.[^.]+$/,'');const text=await readText(file);
+  if(se==='srt'&&de==='vtt')return{blob:new Blob(['WEBVTT\n\n'+text.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g,'$1.$2')],{type:'text/vtt'}),name:stem+'.vtt'};
+  if(se==='vtt'&&de==='srt')return{blob:new Blob([text.replace(/WEBVTT\n\n/,'').replace(/(\d{2}:\d{2}:\d{2})\.(\d{3})/g,'$1,$2')],{type:'text/plain'}),name:stem+'.srt'};
+  if(de==='txt'){const pl=text.replace(/^\d+$/gm,'').replace(/\d{2}:\d{2}:\d{2}[,.].*$/gm,'').replace(/WEBVTT\n?/,'').replace(/\n{3,}/g,'\n\n').trim();return{blob:new Blob([pl],{type:'text/plain'}),name:stem+'.txt'};}
+  throw new Error(`Sous-titre → .${de} non supporté`);
+}
+
+// ── Config ────────────────────────────────
+async function convCfg(file,de){
+  const stem=file.name.replace(/\.[^.]+$/,'');const text=await readText(file);
+  const obj={};text.split('\n').forEach(l=>{l=l.trim();if(!l||l[0]==='#'||l[0]===';')return;const eq=l.indexOf('=');if(eq>0)obj[l.slice(0,eq).trim()]=l.slice(eq+1).trim();});
+  if(de==='json')return{blob:new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}),name:stem+'.json'};
+  if(de==='yaml')return{blob:new Blob([Object.entries(obj).map(([k,v])=>`${k}: ${v}`).join('\n')],{type:'text/yaml'}),name:stem+'.yaml'};
+  return{blob:new Blob([text],{type:'text/plain'}),name:stem+'.txt'};
+}
+
+// ── PDF helpers ───────────────────────────
+async function txtToPdf(text,title){
+  if(typeof PDFLib==='undefined')throw new Error('pdf-lib non disponible');
   const {PDFDocument,rgb,StandardFonts}=PDFLib;
   const doc=await PDFDocument.create();
   const font=await doc.embedFont(StandardFonts.Helvetica);
   const bold=await doc.embedFont(StandardFonts.HelveticaBold);
-  const W=595,H=842,margin=50,lh=14,fs=10;
-  let page=doc.addPage([W,H]);let y=H-margin;
-  // Title
-  page.drawText(title,{x:margin,y,font:bold,size:14,color:rgb(0,0.53,0.71)});
-  y-=lh*2;
-  const lines=text.split('\n');
-  for(const raw of lines){
-    const line=raw.length>90?raw.match(/.{1,90}/g):([raw]);
-    for(const chunk of(Array.isArray(line)?line:[raw])){
-      if(y<margin){page=doc.addPage([W,H]);y=H-margin;}
-      page.drawText(chunk,{x:margin,y,font,size:fs,color:rgb(0.88,0.91,0.94)});
-      y-=lh;
+  const W=595,H=842,M=50,LH=14;
+  let page=doc.addPage([W,H]),y=H-M;
+  page.drawText(title||'Document',{x:M,y,font:bold,size:13,color:rgb(0,.83,.87)});y-=LH*2;
+  for(const raw of text.split('\n')){
+    const chunks=raw.length>90?raw.match(/.{1,90}/g)||[raw]:[raw];
+    for(const chunk of chunks){
+      if(y<M){page=doc.addPage([W,H]);y=H-M;}
+      page.drawText(chunk,{x:M,y,font,size:10,color:rgb(.88,.91,.94)});y-=LH;
     }
   }
-  const bytes=await doc.save();
-  return new Blob([bytes],{type:'application/pdf'});
+  return new Blob([await doc.save()],{type:'application/pdf'});
+}
+async function txtToDocx(text,title){
+  // Minimal DOCX via XML (no lib needed)
+  const escXml=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const paras=text.split('\n').map(l=>`<w:p><w:r><w:t xml:space="preserve">${escXml(l)}</w:t></w:r></w:p>`).join('');
+  const docXml=`<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${paras}</w:body></w:document>`;
+  if(typeof JSZip==='undefined')throw new Error('JSZip non disponible pour DOCX');
+  const zip=new JSZip();
+  zip.file('[Content_Types].xml','<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
+  zip.folder('_rels').file('.rels','<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+  zip.folder('word').file('document.xml',docXml);
+  zip.folder('word/_rels').file('document.xml.rels','<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>');
+  return await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
 }
 
-// ── 5. HTML → PDF ────────────────────────────────────────────
-async function htmlToPdf(html){return txtToPdf(htmlToText(html),'Converted from HTML');}
-
-// ── 6. DOCX → TXT/HTML/MD/PDF (mammoth.js) ──────────────────
-async function convDocx(file,de){
-  const ab=await readBuf(file);
-  if(de==='html'||de==='htm'){
-    const r=await mammoth.convertToHtml({arrayBuffer:ab});
-    return {blob:new Blob([`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;max-width:800px;margin:2rem auto;line-height:1.7}</style></head><body>${r.value}</body></html>`],{type:'text/html'}), name:file.name.replace(/\.[^.]+$/,'')+'.html'};
-  }
-  const r=await mammoth.extractRawText({arrayBuffer:ab});
-  if(de==='txt')return {blob:new Blob([r.value],{type:'text/plain'}), name:file.name.replace(/\.[^.]+$/,'')+'.txt'};
-  if(de==='md')return {blob:new Blob([`# ${file.name.replace(/\.[^.]+$/,'')}\n\n${r.value}`],{type:'text/plain'}), name:file.name.replace(/\.[^.]+$/,'')+'.md'};
-  if(de==='pdf'){const b=await txtToPdf(r.value,file.name);return {blob:b, name:file.name.replace(/\.[^.]+$/,'')+'.pdf'};}
-  throw new Error(`DOCX → .${de} non supporté`);
-}
-
-// ── 7. XLSX/XLS → CSV/JSON/HTML/TXT/PDF (SheetJS) ──────────
-async function convXlsx(file,de){
-  const ab=await readBuf(file);
-  const wb=XLSX.read(ab,{type:'array'});
-  const ws=wb.Sheets[wb.SheetNames[0]];
-  if(de==='csv'){const csv=XLSX.utils.sheet_to_csv(ws);return {blob:new Blob([csv],{type:'text/csv'}), name:file.name.replace(/\.[^.]+$/,'')+'.csv'};}
-  if(de==='json'){
-    const data=XLSX.utils.sheet_to_json(ws,{defval:''});
-    return {blob:new Blob([JSON.stringify(data,null,2)],{type:'application/json'}), name:file.name.replace(/\.[^.]+$/,'')+'.json'};
-  }
-  if(de==='html'||de==='htm'){const h=XLSX.utils.sheet_to_html(ws);return {blob:new Blob([h],{type:'text/html'}), name:file.name.replace(/\.[^.]+$/,'')+'.html'};}
-  if(de==='txt'){const csv=XLSX.utils.sheet_to_csv(ws);return {blob:new Blob([csv.replace(/,/g,'\t')],{type:'text/plain'}), name:file.name.replace(/\.[^.]+$/,'')+'.txt'};}
-  if(de==='pdf'){const csv=XLSX.utils.sheet_to_csv(ws);const b=await txtToPdf(csv,file.name);return {blob:b, name:file.name.replace(/\.[^.]+$/,'')+'.pdf'};}
-  // XLSX → XLSX (format change)
-  if(de==='xlsx'||de==='xls'){const out=XLSX.write(wb,{bookType:de,type:'array'});return {blob:new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), name:file.name.replace(/\.[^.]+$/,'')+'.'+de};}
-  throw new Error(`Excel → .${de} non supporté`);
-}
-
-// ── 8. CSV → JSON/XLSX/HTML/TXT ─────────────────────────────
-function csvToJson(csv){
-  const lines=csv.split('\n').filter(l=>l.trim());
-  if(!lines.length)return'[]';
-  const headers=lines[0].split(',').map(h=>h.trim().replace(/^"|"$/g,''));
-  const rows=lines.slice(1).map(l=>{
-    const vals=l.split(',').map(v=>v.trim().replace(/^"|"$/g,''));
-    return Object.fromEntries(headers.map((h,i)=>[h,vals[i]||'']));
-  });
-  return JSON.stringify(rows,null,2);
-}
-function jsonToCsv(json){
-  const data=JSON.parse(json);if(!Array.isArray(data)||!data.length)return json;
-  const h=Object.keys(data[0]);
-  return[h.join(','),...data.map(r=>h.map(k=>`"${String(r[k]||'').replace(/"/g,'""')}"`).join(','))].join('\n');
-}
-async function convCsv(file,de){
-  const text=await readText(file);
-  if(de==='json')return {blob:new Blob([csvToJson(text)],{type:'application/json'}), name:file.name.replace(/\.[^.]+$/,'')+'.json'};
-  if(de==='xlsx'||de==='xls'){
-    const ws=XLSX.utils.aoa_to_sheet(text.split('\n').map(l=>l.split(',')));
-    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Sheet1');
-    const out=XLSX.write(wb,{bookType:de,type:'array'});
-    return {blob:new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), name:file.name.replace(/\.[^.]+$/,'')+'.'+de};
-  }
-  if(de==='html'){
-    const rows=text.split('\n').filter(l=>l.trim()).map(l=>l.split(','));
-    const tbody=rows.map((r,i)=>`<tr>${r.map(c=>`<t${i?'d':'h'} style="border:1px solid #ddd;padding:6px;background:${i?'':'#333'};color:${i?'':'#fff'}">${esc(c.replace(/^"|"$/g,''))}</t${i?'d':'h'}>`).join('')}</tr>`).join('');
-    return {blob:new Blob([`<!DOCTYPE html><html><head><meta charset="utf-8"><style>table{border-collapse:collapse;font-family:sans-serif}</style></head><body><table>${tbody}</table></body></html>`],{type:'text/html'}), name:file.name.replace(/\.[^.]+$/,'')+'.html'};
-  }
-  if(de==='txt')return {blob:new Blob([text.replace(/,/g,'\t')],{type:'text/plain'}), name:file.name.replace(/\.[^.]+$/,'')+'.txt'};
-  if(de==='pdf'){const b=await txtToPdf(text,file.name);return {blob:b, name:file.name.replace(/\.[^.]+$/,'')+'.pdf'};}
-  throw new Error(`CSV → .${de} non supporté`);
-}
-
-// ── 9. JSON conversions ──────────────────────────────────────
-function jsonToYaml(obj,indent=0){
-  const pad='  '.repeat(indent);
-  if(obj===null)return'null';
-  if(typeof obj==='boolean'||typeof obj==='number')return String(obj);
-  if(typeof obj==='string')return obj.includes('\n')?`|\n${obj.split('\n').map(l=>pad+'  '+l).join('\n')}`:obj;
-  if(Array.isArray(obj))return obj.map(v=>`\n${pad}- ${jsonToYaml(v,indent+1)}`).join('');
-  return Object.entries(obj).map(([k,v])=>{
-    const sv=jsonToYaml(v,indent+1);
-    return typeof v==='object'&&v!==null?`\n${pad}${k}:${sv}`:`\n${pad}${k}: ${sv}`;
-  }).join('');
-}
-async function convJson(file,de){
-  const text=await readText(file);
-  let data;try{data=JSON.parse(text);}catch(e){throw new Error('JSON invalide: '+e.message);}
-  if(de==='yaml')return {blob:new Blob([jsonToYaml(data).trim()],{type:'text/yaml'}), name:file.name.replace(/\.[^.]+$/,'')+'.yaml'};
-  if(de==='csv')return {blob:new Blob([jsonToCsv(text)],{type:'text/csv'}), name:file.name.replace(/\.[^.]+$/,'')+'.csv'};
-  if(de==='txt')return {blob:new Blob([JSON.stringify(data,null,2)],{type:'text/plain'}), name:file.name.replace(/\.[^.]+$/,'')+'.txt'};
-  if(de==='html'){const pretty=JSON.stringify(data,null,2);return {blob:textToHtmlBlob(pretty,file.name,'json'), name:file.name.replace(/\.[^.]+$/,'')+'.html'};}
-  if(de==='xlsx'||de==='xls'){
-    const rows=Array.isArray(data)?data:[data];
-    const ws=XLSX.utils.json_to_sheet(rows);
-    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Sheet1');
-    const out=XLSX.write(wb,{bookType:de,type:'array'});
-    return {blob:new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), name:file.name.replace(/\.[^.]+$/,'')+'.'+de};
-  }
-  if(de==='pdf'){const b=await txtToPdf(JSON.stringify(data,null,2),file.name);return {blob:b, name:file.name.replace(/\.[^.]+$/,'')+'.pdf'};}
-  throw new Error(`JSON → .${de} non supporté`);
-}
-
-// ── 10. XML → JSON/TXT/HTML ──────────────────────────────────
-async function convXml(file,de){
-  const text=await readText(file);
-  if(de==='html')return {blob:textToHtmlBlob(text,file.name,'xml'), name:file.name.replace(/\.[^.]+$/,'')+'.html'};
-  if(de==='txt'){const d=document.createElement('div');d.innerHTML=text;return {blob:new Blob([d.textContent],{type:'text/plain'}), name:file.name.replace(/\.[^.]+$/,'')+'.txt'};}
-  if(de==='json'){
-    const p=new DOMParser(),doc=p.parseFromString(text,'text/xml');
-    function e2o(n){if(n.nodeType===3)return n.textContent.trim();const o={};for(const a of n.attributes||[])o['@'+a.name]=a.value;for(const c of n.childNodes){const k=c.nodeName,v=e2o(c);if(v==='')continue;o[k]=o[k]?[].concat(o[k],v):v;}return o;}
-    return {blob:new Blob([JSON.stringify(e2o(doc.documentElement),null,2)],{type:'application/json'}), name:file.name.replace(/\.[^.]+$/,'')+'.json'};
-  }
-  throw new Error(`XML → .${de} non supporté`);
-}
-
-// ── 11. ZIP/Archive (JSZip) ──────────────────────────────────
-async function convArchive(file,de){
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const ab=await readBuf(file);
-  const zip=await JSZip.loadAsync(ab);
-  if(de==='zip'){
-    const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
-    return {blob, name:stem+'.zip'};
-  }
-  if(de==='tar'||de==='gz'){
-    // TAR/GZ not natively supported — repack as ZIP
-    const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE'});
-    return {blob, name:stem+'.zip'};
-  }
-  if(de==='txt'){
-    const names=Object.keys(zip.files).join('\n');
-    return {blob:new Blob([names],{type:'text/plain'}), name:stem+'.txt'};
-  }
-  throw new Error(`Archive → .${de} non supporté`);
-}
-
-// ── 12. Subtitles ────────────────────────────────────────────
-async function convSubtitle(file,se,de){
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const text=await readText(file);
-  if(se==='srt'&&de==='vtt')return {blob:new Blob(['WEBVTT\n\n'+text.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g,'$1.$2')],{type:'text/vtt'}), name:stem+'.vtt'};
-  if(se==='vtt'&&de==='srt')return {blob:new Blob([text.replace(/WEBVTT\n\n/,'').replace(/(\d{2}:\d{2}:\d{2})\.(\d{3})/g,'$1,$2')],{type:'text/plain'}), name:stem+'.srt'};
-  if(de==='txt'){const plain=text.replace(/^\d+$/gm,'').replace(/\d{2}:\d{2}:\d{2}[,.]\d{3} --> .+/gm,'').replace(/WEBVTT\n?/,'').replace(/\n{3,}/g,'\n\n').trim();return {blob:new Blob([plain],{type:'text/plain'}), name:stem+'.txt'};}
-  throw new Error(`Sous-titre → .${de} non supporté`);
-}
-
-// ── 13. Config files (INI/ENV/CFG → JSON/TXT/YAML) ──────────
-async function convConfig(file,de){
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const text=await readText(file);
-  const obj={};text.split('\n').forEach(l=>{l=l.trim();if(!l||l.startsWith('#')||l.startsWith(';'))return;const eq=l.indexOf('=');if(eq>0)obj[l.slice(0,eq).trim()]=l.slice(eq+1).trim();});
-  if(de==='json')return {blob:new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}), name:stem+'.json'};
-  if(de==='yaml')return {blob:new Blob([jsonToYaml(obj).trim()],{type:'text/yaml'}), name:stem+'.yaml'};
-  if(de==='txt')return {blob:new Blob([text],{type:'text/plain'}), name:stem+'.txt'};
-  throw new Error(`Config → .${de} non supporté`);
-}
-
-// ── 14 & 15. AUDIO/VIDEO — MediaRecorder streaming ────────────
-const MEDIA_MIME = {
-  mp4:'video/mp4',webm:'video/webm',avi:'video/x-msvideo',mkv:'video/x-matroska',
-  mov:'video/quicktime',mp3:'audio/mpeg',wav:'audio/wav',ogg:'audio/ogg',
-  aac:'audio/aac',m4a:'audio/mp4',opus:'audio/ogg',flac:'audio/flac',
-};
-
-function bestRecorderMime() {
+// ── Media (streaming, temps réel) ─────────
+function bestMime(){
   const p=['audio/webm;codecs=opus','audio/webm;codecs=pcm','audio/webm','audio/ogg;codecs=opus','audio/ogg'];
-  return p.find(m=>{ try{return MediaRecorder.isTypeSupported(m);}catch(e){return false;} })||'audio/webm';
+  return p.find(m=>{try{return MediaRecorder.isTypeSupported(m);}catch(e){return false;}})||'audio/webm';
 }
-
-async function showMediaWarning(file) {
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(file);
-    const med = document.createElement('video');
-    med.src = url; med.preload = 'metadata';
-    med.addEventListener('loadedmetadata', () => {
-      const dur = Math.round(med.duration||0);
-      URL.revokeObjectURL(url);
-      const sizeMB = (file.size/1024/1024).toFixed(1);
-      const durStr = `${Math.floor(dur/60)}m${dur%60}s`;
-      const w = document.createElement('div');
-      w.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-        background:#161f2e;border:2px solid #f97316;border-radius:12px;padding:24px 28px;
-        z-index:9999;max-width:420px;font-family:'JetBrains Mono',monospace;font-size:12px;
-        box-shadow:0 8px 40px rgba(0,0,0,.7);color:#e2e8f0;line-height:1.8;`;
-      w.innerHTML = `
-        <div style="color:#f97316;font-size:14px;font-weight:700;margin-bottom:10px">⚠ Conversion temps réel</div>
-        <div><b style="color:#00d4ff">${file.name}</b></div>
-        <div>${sizeMB} MB — <b style="color:#06ffa5">${durStr}</b></div>
-        <div style="margin-top:8px;color:#f97316">Durée estimée : <b>${durStr}</b><br>
-          <span style="color:#64748b;font-size:10px">Le navigateur lit la vidéo en temps réel.<br>
-          Pour conversion instantanée → version Python.</span></div>
-        <div style="display:flex;gap:10px;margin-top:16px">
-          <button id="wok" style="flex:1;background:#00d4ff;color:#000;border:none;border-radius:6px;
-            padding:9px;font-weight:700;cursor:pointer;font-family:inherit;font-size:12px">
-            ⚡ Continuer</button>
-          <button id="wno" style="flex:1;background:transparent;color:#64748b;border:1px solid #334155;
-            border-radius:6px;padding:9px;cursor:pointer;font-family:inherit;font-size:12px">
-            ✕ Annuler</button>
-        </div>`;
-      document.body.appendChild(w);
-      document.getElementById('wok').onclick = () => { w.remove(); resolve(true); };
-      document.getElementById('wno').onclick = () => { w.remove(); resolve(false); };
-    });
-    med.addEventListener('error', () => { URL.revokeObjectURL(url); resolve(true); });
-    med.load();
+function mediaWarning(file){
+  return new Promise(res=>{
+    const url=URL.createObjectURL(file);
+    const v=document.createElement('video');v.src=url;v.preload='metadata';
+    v.onloadedmetadata=()=>{
+      const dur=Math.round(v.duration||0);URL.revokeObjectURL(url);
+      const durStr=`${Math.floor(dur/60)}m${dur%60}s`;
+      document.getElementById('mw-name').textContent=file.name;
+      document.getElementById('mw-info').innerHTML=`Taille: <b>${(file.size/1048576).toFixed(1)} MB</b> — Durée: <b>${durStr}</b><br><span style="color:var(--warn)">La conversion prendra environ ${durStr} (temps réel).</span>`;
+      document.getElementById('mw-modal').classList.remove('hidden');
+      document.getElementById('mw-ok').textContent=`⚡ Continuer (${durStr})`;
+      document.getElementById('mw-ok').onclick=()=>{document.getElementById('mw-modal').classList.add('hidden');res(true);};
+      document.getElementById('mw-cancel').onclick=()=>{document.getElementById('mw-modal').classList.add('hidden');res(false);};
+    };
+    v.onerror=()=>{URL.revokeObjectURL(url);res(true);};v.load();
   });
 }
-
-async function convMediaFFmpeg(file, de, cb) {
-  const se = (file.name.split('.').pop()||'').toLowerCase();
-  const stem = file.name.replace(/\.[^.]+$/, '');
-  const vidExts = ['mp4','avi','mkv','mov','flv','wmv','3gp','mpeg','mpg','m4v','webm'];
-  const audExts = ['mp3','wav','ogg','flac','aac','m4a','opus','wma'];
-
-  const proceed = await showMediaWarning(file);
-  if (!proceed) throw new Error('Conversion annulée.');
-
-  let outExt = de;
-  if (vidExts.includes(de)) { outExt = 'webm'; log('Sortie vidéo → .webm (navigateur)', 'warn'); }
-  const outName = stem + '.' + outExt;
-  if(cb) cb(5, 'Préparation…');
-
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-
-    // ── Créer un contexte audio pour router le flux ─────────
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    const audioCtx = new AudioCtx();
-    const dest = audioCtx.createMediaStreamDestination();
-
-    const media = document.createElement(audExts.includes(se) ? 'audio' : 'video');
-    media.src = url;
-    media.preload = 'auto';
-    // IMPORTANT: muted=false mais pas dans le DOM → pas de restriction autoplay
-    media.muted = false;
-
-    media.addEventListener('error', () => {
-      URL.revokeObjectURL(url); audioCtx.close();
-      reject(new Error(`Format .${se} non supporté. Utilisez la version Python.`));
-    });
-
-    media.addEventListener('loadedmetadata', async () => {
-      const duration = media.duration || 0;
-      if(cb) cb(8, `Durée: ${Math.round(duration)}s — Initialisation…`);
-
-      try {
-        // ── Router via Web Audio API (évite les restrictions autoplay) ──
-        const source = audioCtx.createMediaElementSource(media);
-        // Connect to both destination (speakers off) and recorder
-        // Do NOT connect to audioCtx.destination → pas de son dans les speakers
-        source.connect(dest);
-        // Ne pas connecter à audioCtx.destination pour éviter l'écho
-
-        const mime = bestRecorderMime();
-        const recorder = new MediaRecorder(dest.stream, {mimeType: mime});
-        const chunks = [];
-
-        recorder.ondataavailable = e => { if(e.data && e.data.size > 0) chunks.push(e.data); };
-        recorder.onstop = async () => {
-          URL.revokeObjectURL(url);
-          await audioCtx.close();
-          if(cb) cb(99, 'Finalisation…');
-          const outMime = outExt==='mp3'?'audio/mpeg'
-            :outExt==='ogg'?'audio/ogg'
-            :outExt==='aac'?'audio/aac'
-            :outExt==='wav'?'audio/wav'
-            :mime;
-          const blob = new Blob(chunks, {type: outMime});
-          if(cb) cb(100, 'Done ✓');
-          resolve({blob, name: outName});
+async function convMedia(file,de,cb){
+  const se=(file.name.split('.').pop()||'').toLowerCase();
+  const stem=file.name.replace(/\.[^.]+$/,'');
+  const vidExts=['mp4','avi','mkv','mov','flv','wmv','3gp','mpeg','mpg','m4v','webm'];
+  const audExts=['mp3','wav','ogg','flac','aac','m4a','opus','wma'];
+  const proceed=await mediaWarning(file);
+  if(!proceed)throw new Error('Annulé.');
+  let outExt=de;
+  if(vidExts.includes(de)){outExt='webm';log('Sortie vidéo → .webm (seul format navigateur)','warn');}
+  return new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(file);
+    const AudioCtx=window.AudioContext||window.webkitAudioContext;
+    const audioCtx=new AudioCtx();
+    const dest=audioCtx.createMediaStreamDestination();
+    const media=document.createElement(audExts.includes(se)?'audio':'video');
+    media.src=url;media.preload='auto';media.muted=false;
+    media.onerror=()=>{URL.revokeObjectURL(url);audioCtx.close();reject(new Error(`Format .${se} non supporté. Utilisez la version Python.`));};
+    media.onloadedmetadata=async()=>{
+      const duration=media.duration||0;
+      if(cb)cb(8,`Durée: ${Math.round(duration)}s`);
+      try{
+        const src=audioCtx.createMediaElementSource(media);
+        src.connect(dest);
+        const mime=bestMime();
+        const recorder=new MediaRecorder(dest.stream,{mimeType:mime});
+        const chunks=[];
+        recorder.ondataavailable=e=>{if(e.data&&e.data.size>0)chunks.push(e.data);};
+        recorder.onstop=async()=>{
+          URL.revokeObjectURL(url);await audioCtx.close();
+          if(cb)cb(99,'Finalisation…');
+          const outMime=outExt==='mp3'?'audio/mpeg':outExt==='ogg'?'audio/ogg':outExt==='aac'?'audio/aac':outExt==='wav'?'audio/wav':mime;
+          resolve({blob:new Blob(chunks,{type:outMime}),name:stem+'.'+outExt});
         };
-        recorder.onerror = e => {
-          URL.revokeObjectURL(url); audioCtx.close();
-          reject(new Error('Recorder: ' + (e.error||'erreur inconnue')));
-        };
-
+        recorder.onerror=e=>{URL.revokeObjectURL(url);audioCtx.close();reject(new Error('Recorder: '+(e.error||'erreur')));};
         recorder.start(500);
-
-        // Resume AudioContext (requis après interaction utilisateur)
-        if(audioCtx.state === 'suspended') await audioCtx.resume();
-
+        if(audioCtx.state==='suspended')await audioCtx.resume();
         await media.play();
-
-        let prog = null;
-        if(duration > 0) {
-          prog = setInterval(() => {
-            if(media.ended || media.paused) return;
-            const pct = 10 + Math.round((media.currentTime/duration) * 87);
-            if(cb) cb(pct, `${Math.round(media.currentTime)}s / ${Math.round(duration)}s`);
-          }, 800);
-        }
-
-        media.addEventListener('ended', () => {
-          if(prog) clearInterval(prog);
-          setTimeout(() => { try{ recorder.stop(); }catch(e){} }, 400);
-        });
-
-      } catch(e) {
-        URL.revokeObjectURL(url); audioCtx.close();
-        reject(new Error('Erreur audio: ' + e.message));
-      }
-    });
-
+        let prog=null;
+        if(duration>0)prog=setInterval(()=>{if(media.ended||media.paused)return;if(cb)cb(10+Math.round(media.currentTime/duration*87),`${Math.round(media.currentTime)}s / ${Math.round(duration)}s`);},800);
+        media.onended=()=>{if(prog)clearInterval(prog);setTimeout(()=>{try{recorder.stop();}catch(e){}},400);};
+      }catch(e){URL.revokeObjectURL(url);audioCtx.close();reject(new Error('Audio: '+e.message));}
+    };
     media.load();
   });
 }
 
-// ── MAIN DISPATCHER ──────────────────────────────────────────
+/* ════════════════════════════════════════════
+   MAIN DISPATCHER
+════════════════════════════════════════════ */
 async function convertFile(file,dstExt,cb=null){
   const se=(file.name.split('.').pop()||'').toLowerCase();
   const de=dstExt.toLowerCase().replace(/^\./,'');
-  const stem=file.name.replace(/\.[^.]+$/,'');
-  const outName=`${stem}.${de}`;
-
   const imgExts=['png','jpg','jpeg','bmp','gif','webp','tiff','tif','ico'];
-  const vidExts=['mp4','webm','avi','mkv','mov','flv','wmv','3gp','mpeg'];
+  const vidExts=['mp4','webm','avi','mkv','mov','flv','wmv','3gp','mpeg','mpg'];
   const audExts=['mp3','wav','ogg','flac','aac','m4a','opus','wma'];
 
-  let blob;
-
-  // IMAGE → IMAGE / PDF / SVG
-  if(imgExts.includes(se)){
-    if(de==='svg'){return await imgToSvg(file);}
-    if(imgExts.includes(de)||de==='pdf'){blob=await convImage(file,de);return{blob,name:outName};}
+  if(imgExts.includes(se)||(se==='svg'&&(imgExts.includes(de)||de==='svg'))
+     ||(imgExts.includes(se)&&de==='pdf')){
+    // SVG → raster
+    if(se==='svg'&&imgExts.includes(de)){
+      const stem=file.name.replace(/\.[^.]+$/,'');
+      const img=new Image(),url=URL.createObjectURL(file);
+      await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url;});
+      const cv=document.createElement('canvas');cv.width=img.naturalWidth||800;cv.height=img.naturalHeight||600;
+      const ctx=cv.getContext('2d');if(['jpg','jpeg'].includes(de)){ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);}
+      ctx.drawImage(img,0,0);URL.revokeObjectURL(url);
+      const m={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',bmp:'image/bmp'};
+      const blob=await new Promise(r=>cv.toBlob(r,m[de]||'image/png'));
+      return{blob,name:stem+'.'+de};
+    }
+    return convImg(file,de);
   }
-  // SVG → raster
-  if(se==='svg'&&imgExts.includes(de)){
-    const img=new Image();const url=URL.createObjectURL(file);
-    await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url;});
-    const cv=document.createElement('canvas');cv.width=img.naturalWidth||800;cv.height=img.naturalHeight||600;
-    const ctx=cv.getContext('2d');if(['jpg','jpeg'].includes(de)){ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);}
-    ctx.drawImage(img,0,0);URL.revokeObjectURL(url);
-    const m={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',bmp:'image/bmp'};
-    blob=await new Promise(r=>cv.toBlob(r,m[de]||'image/png'));
-    return{blob,name:outName};
-  }
-
-  // VIDEO + AUDIO via FFmpeg.wasm
-  if(vidExts.includes(se)||audExts.includes(se)||vidExts.includes(de)||audExts.includes(de)){
-    return await convMediaFFmpeg(file, de, cb);
-  }
-
-  // DOCX / DOC
-  if(['docx','doc'].includes(se)){return await convDocx(file,de);}
-
-  // XLSX / XLS
-  if(['xlsx','xls'].includes(se)){return await convXlsx(file,de);}
-
-  // CSV
-  if(se==='csv'){return await convCsv(file,de);}
-
-  // JSON
-  if(se==='json'){return await convJson(file,de);}
-
-  // XML
-  if(se==='xml'){return await convXml(file,de);}
-
-  // ARCHIVES
-  if(['zip','tar','gz'].includes(se)){return await convArchive(file,de);}
-
-  // SUBTITLES
-  if(['srt','vtt'].includes(se)){return await convSubtitle(file,se,de);}
-
-  // CONFIG
-  if(['ini','env','cfg'].includes(se)){return await convConfig(file,de);}
-
-  // TEXT / CODE → html / md / pdf / txt
-  const text=await readText(file);
-  if(de==='html')return{blob:textToHtmlBlob(text,file.name,se),name:stem+'.html'};
-  if(de==='md')return{blob:new Blob([`# ${file.name}\n\n\`\`\`${se}\n${text}\n\`\`\`\n`],{type:'text/plain'}),name:stem+'.md'};
-  if(de==='pdf'){blob=await txtToPdf(text,file.name);return{blob,name:outName};}
-  if(de==='txt')return{blob:new Blob([text],{type:'text/plain'}),name:outName};
-
-  // HTML → text/md/pdf
-  if(['html','htm'].includes(se)){
-    const plain=htmlToText(text);
-    if(de==='txt')return{blob:new Blob([plain],{type:'text/plain'}),name:outName};
-    if(de==='md')return{blob:new Blob([`# Converti\n\n${plain}`],{type:'text/plain'}),name:stem+'.md'};
-    if(de==='pdf'){blob=await htmlToPdf(text);return{blob,name:outName};}
-  }
-
-  // MD → html / txt / pdf
-  if(se==='md'){
-    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;max-width:800px;margin:2rem auto;line-height:1.7}code{background:#f4f4f4;padding:.2em .4em;border-radius:3px}pre{background:#f4f4f4;padding:1rem;border-radius:6px;overflow:auto}</style></head><body>${mdToHtml(text)}</body></html>`;
-    if(de==='html')return{blob:new Blob([html],{type:'text/html'}),name:stem+'.html'};
-    if(de==='txt')return{blob:new Blob([text],{type:'text/plain'}),name:outName};
-    if(de==='pdf'){blob=await txtToPdf(text,file.name);return{blob,name:outName};}
-  }
-
-  throw new Error(`Conversion .${se} → .${de} non supportée dans le navigateur`);
+  if(vidExts.includes(se)||audExts.includes(se)||vidExts.includes(de)||audExts.includes(de))return convMedia(file,de,cb);
+  if(['docx','doc'].includes(se))return convDocx(file,de);
+  if(['xlsx','xls'].includes(se))return convXlsx(file,de);
+  if(se==='csv')return convCsv(file,de);
+  if(se==='json')return convJson(file,de);
+  if(se==='xml')return convXml(file,de);
+  if(['zip','tar','gz'].includes(se))return convZip(file,de);
+  if(['srt','vtt'].includes(se))return convSub(file,se,de);
+  if(['ini','env','cfg'].includes(se))return convCfg(file,de);
+  if(se==='md')return convMd(file,de);
+  if(['html','htm'].includes(se))return convHtml(file,de);
+  return convText(file,se,de);
 }
 
-/* ═══════════════════════════════════════════════════
+/* ════════════════════════════════════════════
    CONVERT LOOP
-═══════════════════════════════════════════════════ */
+════════════════════════════════════════════ */
 async function startConvert(){
   if(running)return;
   if(!files.length){toast(T('noFile'),'warn');return;}
   const ext=selExt||document.getElementById('mext').value.trim().replace(/^\./,'');
   if(!ext){toast(T('noExt'),'warn');return;}
-
   running=true;
   document.getElementById('cvt-btn').disabled=true;
   document.getElementById('lbl-cvt').textContent=T('cvting');
-
   const total=files.length;let ok=0,err=0;
   log(T('logS',{n:total,ext}),'info');
-
   for(let i=0;i<files.length;i++){
     const{file}=files[i];const t0=performance.now();
-    setProgress(Math.round(i/total*100),file.name);
-    document.getElementById('pcnt').textContent=`${i+1}/${total}`;
+    setProg(Math.round(i/total*100),file.name);
+    document.getElementById('prog-cnt').textContent=`${i+1}/${total}`;
+    const cb=(pct,msg)=>{setProg(Math.round(i/total*100+pct/total),msg);};
     try{
-      const cb=(pct,msg)=>{
-        const overall=Math.round(i/total*100)+(pct/total);
-        setProgress(overall,msg);
-      };
       const r=await convertFile(file,ext,cb);
       const elapsed=((performance.now()-t0)/1000).toFixed(2);
       const sz=fmtSz(r.blob.size);
-      dlBlob(r.blob,r.name);
+      saveAs(r.blob,r.name);
       log(`OK  ${file.name}  →  ${r.name}  (${sz}, ${elapsed}s)`,'ok');
       toast(`✓ ${r.name} (${sz})`,'ok',r.blob,r.name);ok++;
     }catch(e){
@@ -1086,220 +882,110 @@ async function startConvert(){
     }
     await new Promise(r=>setTimeout(r,30));
   }
-
-  setProgress(100,T('ready'));
-  document.getElementById('pcnt').textContent='';
+  setProg(100,T('ready'));document.getElementById('prog-cnt').textContent='';
   log(T('logD',{ok,err,total}),err===0?'ok':'warn');
   setStatus(err===0?T('ok',{n:ok}):T('partial',{ok,err}));
-
   running=false;
   document.getElementById('cvt-btn').disabled=false;
   document.getElementById('lbl-cvt').textContent=T('cvt');
   if(err===0)toast(T('ok',{n:ok}),'ok');else toast(T('partial',{ok,err}),'warn');
 }
 
-/* ═══════════════════════════════════════════════════
-   I18N APPLY
-═══════════════════════════════════════════════════ */
+/* ════════════════════════════════════════════
+   YOUTUBE CONVERTER
+════════════════════════════════════════════ */
+let ytFmt='mp3';
+let currentTab='cobalt';
+const YT_SVCS={
+  cobalt: u=>`https://cobalt.tools/#${encodeURIComponent(u)}`,
+  y2mate: u=>`https://www.y2mate.com/youtube/${encodeURIComponent(u)}`,
+  yt1s:   u=>`https://yt1s.io/youtube-to-mp3?q=${encodeURIComponent(u)}`,
+  savefrom:u=>`https://savefrom.net/#url=${encodeURIComponent(u)}`,
+  loader: u=>`https://loader.to/api/button/?url=${encodeURIComponent(u)}&f=${ytFmt}`,
+};
+function showYT(){document.getElementById('yt-modal').classList.remove('hidden');document.getElementById('yt-url').focus();}
+function hideYT(){document.getElementById('yt-modal').classList.add('hidden');document.getElementById('yt-frame').src='about:blank';document.getElementById('yt-frame-msg').style.display='flex';}
+function setFmt(f){
+  ytFmt=f;
+  document.querySelectorAll('.fmt-btn').forEach(b=>b.classList.remove('act','act-red'));
+  const b=document.getElementById('fmt-'+f);if(b)b.classList.add(f==='mp4'?'act-red':'act');
+  const go=document.getElementById('yt-go');go.className='yt-go'+(f==='mp4'?' red':'');
+}
+function switchTab(svc){
+  currentTab=svc;
+  document.querySelectorAll('.svc-tab').forEach(t=>t.classList.remove('act-tab'));
+  const t=document.getElementById('tab-'+svc);if(t)t.classList.add('act-tab');
+  const url=document.getElementById('yt-url').value.trim();
+  if(url&&(url.includes('youtube.com')||url.includes('youtu.be')))loadFrame(svc,url);
+}
+function loadFrame(svc,ytUrl){
+  const builder=YT_SVCS[svc];if(!builder)return;
+  const target=builder(ytUrl);
+  document.getElementById('yt-frame-msg').style.display='none';
+  document.getElementById('yt-frame').src=target;
+  document.getElementById('yt-open-tab').href=target;
+}
+function ytOpen(){
+  const url=document.getElementById('yt-url').value.trim();
+  const inp=document.getElementById('yt-url');
+  if(!url||(!url.includes('youtube.com')&&!url.includes('youtu.be'))){
+    inp.style.borderColor='var(--err)';setTimeout(()=>inp.style.borderColor='',1500);return;
+  }
+  loadFrame(currentTab,url);
+  log('YouTube: '+currentTab+' chargé','info');
+}
+document.getElementById('yt-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)hideYT();});
+document.getElementById('yt-url').addEventListener('keydown',e=>{if(e.key==='Enter')ytOpen();});
+
+/* ════════════════════════════════════════════
+   I18N
+════════════════════════════════════════════ */
 function applyLang(){
-  const map={'lbl-src':'src','lbl-drag':'drag','lbl-drop':'drop','lbl-empty':'empty','lbl-add':'add','lbl-clear':'clear','lbl-out':'out','lbl-out-info':'outInfo','lbl-fmt':'fmt','lbl-manual':'manual','lbl-cvt':'cvt','lbl-log':'log','lbl-lang':'lang','plbl':'ready','btn-cp':'cp','btn-cl':'cl'};
+  const map={
+    'lbl-src':'src','lbl-drag':'drag','lbl-drop':'drop','lbl-empty':'empty',
+    'lbl-add':'add','lbl-clear':'clear','lbl-out':'out','lbl-out-info':'outInfo',
+    'lbl-fmt':'fmt','lbl-manual':'manual','lbl-cvt':'cvt','lbl-log':'log',
+    'lbl-lang':'lang','prog-lbl':'ready','btn-cp':'cp','btn-cl':'cl',
+  };
   for(const[id,k]of Object.entries(map)){const el=document.getElementById(id);if(el)el.textContent=T(k);}
-  buildGrid();if(selExt)selectExt(selExt);
-  setStatus(T('ready'));
+  setStatus(T('ready'));buildGrid();if(selExt)pickExt(selExt);updStats();
 }
 document.getElementById('lang-sel').addEventListener('change',function(){LANG=this.value;applyLang();});
 
-/* ═══════════════════════════════════════════════════
-   INIT — attendre les librairies CDN
-═══════════════════════════════════════════════════ */
-async function init(){
-  const loadEl=document.getElementById('load-txt');
-  // Check libs with retry
-  let tries=0;
-  while(tries<40){
-    const ok=typeof PDFLib!=='undefined'&&typeof XLSX!=='undefined'&&typeof mammoth!=='undefined'&&typeof JSZip!=='undefined'&&typeof saveAs!=='undefined';
-    if(ok)break;
-    await new Promise(r=>setTimeout(r,250));tries++;
-    loadEl.textContent=`${T('loading')} (${tries}/40)`;
-  }
-  document.getElementById('loading').classList.add('hidden');
-  buildGrid();renderFiles();
-  log('Zenkari Converter v3.0 Web — Prêt 🚀','info');
-  log('Librairies : pdf-lib ✓  xlsx ✓  mammoth ✓  JSZip ✓  FileSaver ✓  FFmpeg.wasm (à la demande)','info');
-  if(typeof PDFLib==='undefined')log('⚠ pdf-lib non chargé — PDF désactivé','warn');
-  if(typeof XLSX==='undefined')log('⚠ xlsx non chargé — Excel désactivé','warn');
-  if(typeof mammoth==='undefined')log('⚠ mammoth non chargé — DOCX désactivé','warn');
-  if(typeof JSZip==='undefined')log('⚠ JSZip non chargé — ZIP désactivé','warn');
-}
-init();
-
-/* ═══════════════════════════════════════════════════
-   YOUTUBE CONVERTER
-═══════════════════════════════════════════════════ */
-let ytFmt = 'mp3';
-
-function openYT() {
-  document.getElementById('yt-modal').classList.remove('hidden');
-  document.getElementById('yt-url').focus();
-}
-
-function closeYT() {
-  document.getElementById('yt-modal').classList.add('hidden');
-  document.getElementById('yt-status').textContent = '';
-  document.getElementById('yt-prog-wrap').style.display = 'none';
-  document.getElementById('yt-prog-fill').style.width = '0%';
-}
-
-function setYTFmt(fmt) {
-  ytFmt = fmt;
-  document.querySelectorAll('.yt-fmt-btn').forEach(b => {
-    b.classList.remove('act','act-red');
-  });
-  const btn = document.getElementById(`yt-${fmt}-btn`);
-  if(btn) btn.classList.add(fmt==='mp4'?'act-red':'act');
-  // Update go button color
-  const go = document.getElementById('yt-go-btn');
-  go.className = 'yt-go' + (fmt==='mp4'?' red':'');
-}
-
-function setYTStatus(msg, color='var(--muted)') {
-  const el = document.getElementById('yt-status');
-  el.style.color = color;
-  el.textContent = msg;
-}
-
-function setYTProg(pct) {
-  const wrap = document.getElementById('yt-prog-wrap');
-  const fill = document.getElementById('yt-prog-fill');
-  wrap.style.display = pct > 0 ? 'block' : 'none';
-  fill.style.width = pct + '%';
-}
-
-// Build service URLs with the YouTube URL embedded
-const YT_SERVICES = {
-  y2mate:   url => `https://www.y2mate.com/youtube/${encodeURIComponent(url)}`,
-  cobalt:   url => `https://cobalt.tools/`,
-  yt1s:     url => `https://yt1s.io/youtube-to-mp3?q=${encodeURIComponent(url)}`,
-  savefrom: url => `https://savefrom.net/#url=${encodeURIComponent(url)}`,
-  loader:   url => `https://loader.to/api/button/?url=${encodeURIComponent(url)}&f=${ytFmt}`,
-  '9xbuddy':url => `https://9xbuddy.xyz/process?url=${encodeURIComponent(url)}`,
-};
-
-function openService(svc) {
-  const url = document.getElementById('yt-url').value.trim();
-  const builder = YT_SERVICES[svc];
-  if (!builder) return false;
-  if (!url || !url.includes('youtube')) {
-    setYTStatus('⚠ Colle d'abord un lien YouTube', 'var(--warn)');
-    return false;
-  }
-  window.open(builder(url), '_blank');
-  setYTStatus(`✓ Ouvert dans ${svc} — choisis le format ${ytFmt.toUpperCase()}`, 'var(--a3)');
-  return false;
-}
-
-async function ytConvert() {
-  const url = document.getElementById('yt-url').value.trim();
-  if (!url) { setYTStatus('⚠ Entre un lien YouTube', 'var(--warn)'); return; }
-  if (!url.includes('youtube.com') && !url.includes('youtu.be')) {
-    setYTStatus('⚠ Lien YouTube invalide', 'var(--err)'); return;
-  }
-
-  setYTStatus('Tentative via API cobalt.tools…', 'var(--accent)');
-  setYTProg(10);
-
-  try {
-    // Try cobalt.tools API (open-source, no key needed)
-    const apiUrl = 'https://api.cobalt.tools/api/json';
-    const body = {
-      url: url,
-      vCodec: 'h264',
-      vQuality: '720',
-      aFormat: ytFmt === 'mp4' ? 'mp3' : ytFmt,
-      isAudioOnly: ytFmt !== 'mp4',
-      isNoTTWatermark: true,
-      dubLang: false,
-    };
-
-    setYTProg(20);
-    const resp = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
-      body: JSON.stringify(body),
-    });
-
-    setYTProg(40);
-    const data = await resp.json();
-
-    if (data.status === 'stream' || data.status === 'redirect') {
-      const dlUrl = data.url;
-      setYTStatus('⬇ Téléchargement en cours…', 'var(--a3)');
-      setYTProg(70);
-      // Download the stream
-      const fileResp = await fetch(dlUrl);
-      setYTProg(85);
-      const blob = await fileResp.blob();
-      setYTProg(98);
-      // Get filename from headers or generate one
-      const cd = fileResp.headers.get('content-disposition');
-      let filename = `youtube_${Date.now()}.${ytFmt}`;
-      if (cd) {
-        const m = cd.match(/filename[^;=
-]*=((['"]).*?|[^;
-]*)/);
-        if (m) filename = m[1].replace(/['"]/g,'');
-      }
-      saveAs(blob, filename);
-      setYTProg(100);
-      setYTStatus(`✓ Téléchargé : ${filename}`, 'var(--a3)');
-      toast(`✓ YouTube → ${filename}`, 'ok');
-      setTimeout(() => setYTProg(0), 3000);
-
-    } else if (data.status === 'picker') {
-      // Multiple quality options
-      setYTStatus('Plusieurs qualités disponibles — ouverture cobalt.tools', 'var(--warn)');
-      window.open('https://cobalt.tools/', '_blank');
-      setYTProg(0);
-
-    } else if (data.status === 'error') {
-      throw new Error(data.text || 'Erreur cobalt API');
-
-    } else {
-      throw new Error('Réponse inattendue: ' + JSON.stringify(data).slice(0,100));
-    }
-
-  } catch(e) {
-    setYTProg(0);
-    // Cobalt failed — show service buttons as fallback
-    setYTStatus(`API indisponible — utilise un service ci-dessous`, 'var(--warn)');
-    // Auto-populate service links with the URL
-    const ytUrl = url;
-    document.querySelectorAll('.yt-svc').forEach(el => {
-      const svc = el.id.replace('svc-','');
-      const builder = YT_SERVICES[svc];
-      if(builder) { el.href = builder(ytUrl); el.onclick = null; }
-    });
-    log(`YouTube API: ${e.message} — utilise les services alternatifs`, 'warn');
-  }
-}
-
-// Close modal on background click
-document.getElementById('yt-modal').addEventListener('click', function(e) {
-  if(e.target === this) closeYT();
-});
-
-// Enter key in URL input
-document.getElementById('yt-url').addEventListener('keydown', e => {
-  if(e.key === 'Enter') ytConvert();
-});
-
-// Keyboard shortcuts
+/* ════════════════════════════════════════════
+   KEYBOARD
+════════════════════════════════════════════ */
 document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key==='Enter')startConvert();
   if(e.key==='Delete'&&document.activeElement.tagName!=='INPUT'){
     const s=document.querySelector('.fi.sel');if(s)window.rmFile(parseInt(s.dataset.id));
   }
+  if(e.key==='Escape'){hideYT();document.getElementById('mw-modal').classList.add('hidden');}
 });
+
+/* ════════════════════════════════════════════
+   INIT
+════════════════════════════════════════════ */
+// Désinscrire tout service worker résiduel
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.getRegistrations().then(regs=>regs.forEach(r=>r.unregister()));
+}
+buildGrid();
+renderFiles();
+log('Zenkari Converter v3.2 Web — Prêt 🚀','info');
+setTimeout(()=>{
+  const libs=[
+    [typeof PDFLib!=='undefined','pdf-lib'],
+    [typeof XLSX!=='undefined','xlsx/SheetJS'],
+    [typeof mammoth!=='undefined','mammoth'],
+    [typeof JSZip!=='undefined','JSZip'],
+    [typeof saveAs!=='undefined','FileSaver'],
+  ];
+  const ok=libs.filter(l=>l[0]).map(l=>l[1]);
+  const ko=libs.filter(l=>!l[0]).map(l=>l[1]);
+  if(ok.length)log('Libs OK: '+ok.join(' ✓  ')+' ✓','ok');
+  if(ko.length)log('⚠ Libs manquantes (CDN lent): '+ko.join(', '),'warn');
+},2000);
 </script>
 </body>
 </html>
