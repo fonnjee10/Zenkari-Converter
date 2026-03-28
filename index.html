@@ -787,7 +787,7 @@ async function convMediaFFmpeg(file, de, cb) {
 }
 
 // ── MAIN DISPATCHER ──────────────────────────────────────────
-async function convertFile(file,dstExt){
+async function convertFile(file,dstExt,cb=null){
   const se=(file.name.split('.').pop()||'').toLowerCase();
   const de=dstExt.toLowerCase().replace(/^\./,'');
   const stem=file.name.replace(/\.[^.]+$/,'');
@@ -892,7 +892,7 @@ async function startConvert(){
     setProgress(Math.round(i/total*100),file.name);
     document.getElementById('pcnt').textContent=`${i+1}/${total}`;
     try{
-      const r=await convertFile(file,ext);
+      const r=await convertFile(file,ext,cb);
       const elapsed=((performance.now()-t0)/1000).toFixed(2);
       const sz=fmtSz(r.blob.size);
       dlBlob(r.blob,r.name);
