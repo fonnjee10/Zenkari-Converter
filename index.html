@@ -4,6 +4,43 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Zenkari Converter v3.1 — Web</title>
+<script>
+// ── Service Worker inline — injecte COOP/COEP pour FFmpeg.wasm ──
+(function() {
+  const SW_CODE = `
+self.addEventListener('install', e => { self.skipWaiting(); });
+self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+self.addEventListener('fetch', e => {
+  e.respondWith(
+    fetch(e.request).then(r => {
+      const headers = new Headers(r.headers);
+      headers.set('Cross-Origin-Opener-Policy', 'same-origin');
+      headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
+      headers.set('Cross-Origin-Resource-Policy', 'cross-origin');
+      return new Response(r.body, { status: r.status, statusText: r.statusText, headers });
+    }).catch(() => fetch(e.request))
+  );
+});
+`;
+  if (!('serviceWorker' in navigator)) return;
+  const blob = new Blob([SW_CODE], { type: 'application/javascript' });
+  const swURL = URL.createObjectURL(blob);
+  navigator.serviceWorker.register(swURL, { scope: '/' })
+    .then(reg => {
+      console.log('[Zenkari] Service Worker enregistré');
+      // Si le SW vient d'être installé, recharger pour activer les headers
+      if (reg.installing) {
+        reg.installing.addEventListener('statechange', function() {
+          if (this.state === 'activated') {
+            console.log('[Zenkari] SW activé — rechargement pour COOP/COEP');
+            location.reload();
+          }
+        });
+      }
+    })
+    .catch(e => console.warn('[Zenkari] SW non disponible:', e.message));
+})();
+</script>
 
 <!-- ═══════════ LIBRAIRIES JS (CDN) ═══════════
   pdf-lib      → créer/manipuler PDF
@@ -18,32 +55,13 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-<script>
-// Load FFmpeg.wasm dynamically with multiple CDN fallbacks
-(async function loadFFmpegScript() {
-  const urls = [
-    'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js',
-    'https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js',
-  ];
-  for (const url of urls) {
-    try {
-      await new Promise((res, rej) => {
-        const s = document.createElement('script');
-        s.src = url; s.onload = res; s.onerror = rej;
-        document.head.appendChild(s);
-      });
-      console.log('FFmpeg.wasm script loaded from:', url);
-      window._ffmpegScriptLoaded = true;
-      break;
-    } catch(e) {
-      console.warn('FFmpeg CDN failed:', url);
-    }
-  }
-  if (!window._ffmpegScriptLoaded) {
-    console.error('All FFmpeg CDNs failed');
-  }
-})();
-</script>
+<script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js" 
+  onerror="console.error('jsdelivr failed, trying unpkg');
+  var s=document.createElement('script');
+  s.src='https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js';
+  s.onload=function(){window._ffLoaded=true;console.log('FFmpeg loaded from unpkg');};
+  document.head.appendChild(s);"
+  onload="window._ffLoaded=true;console.log('FFmpeg loaded from jsdelivr');"></script>
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;600;700;800&display=swap');
@@ -725,50 +743,47 @@ async function getFFmpeg(cb) {
   }
   _ffmpegLoading = true;
 
-  // Wait up to 10s for the script tag to finish loading
+  // Check SharedArrayBuffer support (required by FFmpeg.wasm)
+  if (typeof SharedArrayBuffer === 'undefined') {
+    _ffmpegLoading = false;
+    throw new Error(
+      'Votre navigateur bloque SharedArrayBuffer (requis par FFmpeg.wasm).\n' +
+      'Solution : ouvrez ce fichier via un serveur local.\n' +
+      'Lancez dans le dossier : python -m http.server 8080\n' +
+      'Puis ouvrez : http://localhost:8080'
+    );
+  }
+
+  // Wait up to 15s for the script to load
   let waited = 0;
-  while (typeof createFFmpeg === 'undefined' && waited < 10000) {
-    await new Promise(r => setTimeout(r, 200));
-    waited += 200;
+  while (typeof createFFmpeg === 'undefined' && waited < 15000) {
+    await new Promise(r => setTimeout(r, 300));
+    waited += 300;
   }
   if (typeof createFFmpeg === 'undefined') {
     _ffmpegLoading = false;
-    throw new Error('createFFmpeg introuvable. Essayez de recharger la page avec Ctrl+Shift+R.');
+    throw new Error('Script FFmpeg non chargé. Vérifiez votre connexion et rechargez (Ctrl+Shift+R).');
   }
 
   try {
-    const coreCDNs = [
-      'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js',
-      'https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js',
-    ];
-    let loaded = false;
-    for (const corePath of coreCDNs) {
-      try {
-        _ffmpeg = createFFmpeg({
-          log: true,
-          progress: ({ratio}) => {
-            if (cb && ratio >= 0) cb(Math.round(ratio * 85) + 10, `ffmpeg: ${Math.round(ratio*100)}%`);
-          },
-          corePath,
-        });
-        log(`Chargement FFmpeg.wasm core (~25MB)…`, 'warn');
-        if (cb) cb(2, 'Chargement FFmpeg.wasm…');
-        await _ffmpeg.load();
-        loaded = true;
-        break;
-      } catch(e) {
-        log(`CDN échoué: ${corePath} — ${e.message}`, 'warn');
-        _ffmpeg = null;
-      }
-    }
-    if (!loaded) throw new Error('Tous les CDN FFmpeg ont échoué. Vérifiez votre connexion.');
+    _ffmpeg = createFFmpeg({
+      log: false,
+      progress: ({ratio}) => {
+        if (cb && ratio >= 0) cb(Math.round(ratio * 85) + 10, `ffmpeg: ${Math.round(ratio*100)}%`);
+      },
+      corePath: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js',
+    });
+    log('Chargement FFmpeg.wasm (~25MB, une seule fois)…', 'warn');
+    if (cb) cb(2, 'Chargement FFmpeg.wasm…');
+    await _ffmpeg.load();
     _ffmpegReady = true;
     _ffmpegLoading = false;
     log('FFmpeg.wasm prêt ✓', 'ok');
   } catch(e) {
     _ffmpegLoading = false;
     _ffmpegReady = false;
-    throw new Error('FFmpeg.wasm : ' + e.message);
+    _ffmpeg = null;
+    throw new Error('FFmpeg load() échoué : ' + e.message);
   }
   return _ffmpeg;
 }
