@@ -477,11 +477,12 @@ async function convImage(file,de){
 
 // ── 2. IMAGE → SVG (embed raster in SVG wrapper) ───────────
 async function imgToSvg(file){
+  const stem=file.name.replace(/\.[^.]+$/,'');
   const blob=await convImage(file,'png');
   const du=await blobToDataUrl(blob);
   const img=await new Promise((res,rej)=>{const i=new Image(),u=URL.createObjectURL(blob);i.onload=()=>{URL.revokeObjectURL(u);res(i);};i.onerror=rej;i.src=u;});
   const svg=`<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${img.naturalWidth}" height="${img.naturalHeight}"><image xlink:href="${du}" width="${img.naturalWidth}" height="${img.naturalHeight}"/></svg>`;
-  return new Blob([svg],{type:'image/svg+xml'});
+  return {blob:new Blob([svg],{type:'image/svg+xml'}), name:stem+'.svg'};
 }
 
 // ── 3. TXT / CODE → various ──────────────────────────────────
@@ -530,12 +531,12 @@ async function convDocx(file,de){
   const ab=await readBuf(file);
   if(de==='html'||de==='htm'){
     const r=await mammoth.convertToHtml({arrayBuffer:ab});
-    return new Blob([`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;max-width:800px;margin:2rem auto;line-height:1.7}</style></head><body>${r.value}</body></html>`],{type:'text/html'});
+    return {blob:new Blob([`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;max-width:800px;margin:2rem auto;line-height:1.7}</style></head><body>${r.value}</body></html>`],{type:'text/html'}), name:file.name.replace(/\.[^.]+$/,'')+'.html'};
   }
   const r=await mammoth.extractRawText({arrayBuffer:ab});
-  if(de==='txt')return new Blob([r.value],{type:'text/plain'});
-  if(de==='md')return new Blob([`# ${file.name.replace(/\.[^.]+$/,'')}\n\n${r.value}`],{type:'text/plain'});
-  if(de==='pdf')return await txtToPdf(r.value,file.name);
+  if(de==='txt')return {blob:new Blob([r.value],{type:'text/plain'}), name:file.name.replace(/\.[^.]+$/,'')+'.txt'};
+  if(de==='md')return {blob:new Blob([`# ${file.name.replace(/\.[^.]+$/,'')}\n\n${r.value}`],{type:'text/plain'}), name:file.name.replace(/\.[^.]+$/,'')+'.md'};
+  if(de==='pdf'){const b=await txtToPdf(r.value,file.name);return {blob:b, name:file.name.replace(/\.[^.]+$/,'')+'.pdf'};}
   throw new Error(`DOCX → .${de} non supporté`);
 }
 
@@ -544,16 +545,16 @@ async function convXlsx(file,de){
   const ab=await readBuf(file);
   const wb=XLSX.read(ab,{type:'array'});
   const ws=wb.Sheets[wb.SheetNames[0]];
-  if(de==='csv'){const csv=XLSX.utils.sheet_to_csv(ws);return new Blob([csv],{type:'text/csv'});}
+  if(de==='csv'){const csv=XLSX.utils.sheet_to_csv(ws);return {blob:new Blob([csv],{type:'text/csv'}), name:file.name.replace(/\.[^.]+$/,'')+'.csv'};}
   if(de==='json'){
     const data=XLSX.utils.sheet_to_json(ws,{defval:''});
-    return new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    return {blob:new Blob([JSON.stringify(data,null,2)],{type:'application/json'}), name:file.name.replace(/\.[^.]+$/,'')+'.json'};
   }
-  if(de==='html'||de==='htm'){const h=XLSX.utils.sheet_to_html(ws);return new Blob([h],{type:'text/html'});}
-  if(de==='txt'){const csv=XLSX.utils.sheet_to_csv(ws);return new Blob([csv.replace(/,/g,'\t')],{type:'text/plain'});}
-  if(de==='pdf'){const csv=XLSX.utils.sheet_to_csv(ws);return await txtToPdf(csv,file.name);}
+  if(de==='html'||de==='htm'){const h=XLSX.utils.sheet_to_html(ws);return {blob:new Blob([h],{type:'text/html'}), name:file.name.replace(/\.[^.]+$/,'')+'.html'};}
+  if(de==='txt'){const csv=XLSX.utils.sheet_to_csv(ws);return {blob:new Blob([csv.replace(/,/g,'\t')],{type:'text/plain'}), name:file.name.replace(/\.[^.]+$/,'')+'.txt'};}
+  if(de==='pdf'){const csv=XLSX.utils.sheet_to_csv(ws);const b=await txtToPdf(csv,file.name);return {blob:b, name:file.name.replace(/\.[^.]+$/,'')+'.pdf'};}
   // XLSX → XLSX (format change)
-  if(de==='xlsx'||de==='xls'){const out=XLSX.write(wb,{bookType:de,type:'array'});return new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});}
+  if(de==='xlsx'||de==='xls'){const out=XLSX.write(wb,{bookType:de,type:'array'});return {blob:new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), name:file.name.replace(/\.[^.]+$/,'')+'.'+de};}
   throw new Error(`Excel → .${de} non supporté`);
 }
 
@@ -575,20 +576,20 @@ function jsonToCsv(json){
 }
 async function convCsv(file,de){
   const text=await readText(file);
-  if(de==='json')return new Blob([csvToJson(text)],{type:'application/json'});
+  if(de==='json')return {blob:new Blob([csvToJson(text)],{type:'application/json'}), name:file.name.replace(/\.[^.]+$/,'')+'.json'};
   if(de==='xlsx'||de==='xls'){
     const ws=XLSX.utils.aoa_to_sheet(text.split('\n').map(l=>l.split(',')));
     const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Sheet1');
     const out=XLSX.write(wb,{bookType:de,type:'array'});
-    return new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    return {blob:new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), name:file.name.replace(/\.[^.]+$/,'')+'.'+de};
   }
   if(de==='html'){
     const rows=text.split('\n').filter(l=>l.trim()).map(l=>l.split(','));
     const tbody=rows.map((r,i)=>`<tr>${r.map(c=>`<t${i?'d':'h'} style="border:1px solid #ddd;padding:6px;background:${i?'':'#333'};color:${i?'':'#fff'}">${esc(c.replace(/^"|"$/g,''))}</t${i?'d':'h'}>`).join('')}</tr>`).join('');
-    return new Blob([`<!DOCTYPE html><html><head><meta charset="utf-8"><style>table{border-collapse:collapse;font-family:sans-serif}</style></head><body><table>${tbody}</table></body></html>`],{type:'text/html'});
+    return {blob:new Blob([`<!DOCTYPE html><html><head><meta charset="utf-8"><style>table{border-collapse:collapse;font-family:sans-serif}</style></head><body><table>${tbody}</table></body></html>`],{type:'text/html'}), name:file.name.replace(/\.[^.]+$/,'')+'.html'};
   }
-  if(de==='txt')return new Blob([text.replace(/,/g,'\t')],{type:'text/plain'});
-  if(de==='pdf')return await txtToPdf(text,file.name);
+  if(de==='txt')return {blob:new Blob([text.replace(/,/g,'\t')],{type:'text/plain'}), name:file.name.replace(/\.[^.]+$/,'')+'.txt'};
+  if(de==='pdf'){const b=await txtToPdf(text,file.name);return {blob:b, name:file.name.replace(/\.[^.]+$/,'')+'.pdf'};}
   throw new Error(`CSV → .${de} non supporté`);
 }
 
@@ -607,72 +608,73 @@ function jsonToYaml(obj,indent=0){
 async function convJson(file,de){
   const text=await readText(file);
   let data;try{data=JSON.parse(text);}catch(e){throw new Error('JSON invalide: '+e.message);}
-  if(de==='yaml')return new Blob([jsonToYaml(data).trim()],{type:'text/yaml'});
-  if(de==='csv')return new Blob([jsonToCsv(text)],{type:'text/csv'});
-  if(de==='txt')return new Blob([JSON.stringify(data,null,2)],{type:'text/plain'});
-  if(de==='html')return new Blob([textToHtmlBlob(JSON.stringify(data,null,2),file.name,'json').text],{type:'text/html'});
+  if(de==='yaml')return {blob:new Blob([jsonToYaml(data).trim()],{type:'text/yaml'}), name:file.name.replace(/\.[^.]+$/,'')+'.yaml'};
+  if(de==='csv')return {blob:new Blob([jsonToCsv(text)],{type:'text/csv'}), name:file.name.replace(/\.[^.]+$/,'')+'.csv'};
+  if(de==='txt')return {blob:new Blob([JSON.stringify(data,null,2)],{type:'text/plain'}), name:file.name.replace(/\.[^.]+$/,'')+'.txt'};
+  if(de==='html'){const pretty=JSON.stringify(data,null,2);return {blob:textToHtmlBlob(pretty,file.name,'json'), name:file.name.replace(/\.[^.]+$/,'')+'.html'};}
   if(de==='xlsx'||de==='xls'){
     const rows=Array.isArray(data)?data:[data];
     const ws=XLSX.utils.json_to_sheet(rows);
     const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Sheet1');
     const out=XLSX.write(wb,{bookType:de,type:'array'});
-    return new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    return {blob:new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), name:file.name.replace(/\.[^.]+$/,'')+'.'+de};
   }
-  if(de==='pdf')return await txtToPdf(JSON.stringify(data,null,2),file.name);
+  if(de==='pdf'){const b=await txtToPdf(JSON.stringify(data,null,2),file.name);return {blob:b, name:file.name.replace(/\.[^.]+$/,'')+'.pdf'};}
   throw new Error(`JSON → .${de} non supporté`);
 }
 
 // ── 10. XML → JSON/TXT/HTML ──────────────────────────────────
 async function convXml(file,de){
   const text=await readText(file);
-  if(de==='html')return textToHtmlBlob(text,file.name,'xml');
-  if(de==='txt'){const d=document.createElement('div');d.innerHTML=text;return new Blob([d.textContent],{type:'text/plain'});}
+  if(de==='html')return {blob:textToHtmlBlob(text,file.name,'xml'), name:file.name.replace(/\.[^.]+$/,'')+'.html'};
+  if(de==='txt'){const d=document.createElement('div');d.innerHTML=text;return {blob:new Blob([d.textContent],{type:'text/plain'}), name:file.name.replace(/\.[^.]+$/,'')+'.txt'};}
   if(de==='json'){
     const p=new DOMParser(),doc=p.parseFromString(text,'text/xml');
     function e2o(n){if(n.nodeType===3)return n.textContent.trim();const o={};for(const a of n.attributes||[])o['@'+a.name]=a.value;for(const c of n.childNodes){const k=c.nodeName,v=e2o(c);if(v==='')continue;o[k]=o[k]?[].concat(o[k],v):v;}return o;}
-    return new Blob([JSON.stringify(e2o(doc.documentElement),null,2)],{type:'application/json'});
+    return {blob:new Blob([JSON.stringify(e2o(doc.documentElement),null,2)],{type:'application/json'}), name:file.name.replace(/\.[^.]+$/,'')+'.json'};
   }
   throw new Error(`XML → .${de} non supporté`);
 }
 
 // ── 11. ZIP/Archive (JSZip) ──────────────────────────────────
 async function convArchive(file,de){
+  const stem=file.name.replace(/\.[^.]+$/,'');
   const ab=await readBuf(file);
   const zip=await JSZip.loadAsync(ab);
   if(de==='zip'){
-    // Re-zip (normalize)
-    const nb=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
-    return nb;
+    const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
+    return {blob, name:stem+'.zip'};
   }
   if(de==='tar'||de==='gz'){
-    // Export as ZIP (TAR requires external lib)
-    const nb=await zip.generateAsync({type:'blob'});
-    return nb;
+    // TAR/GZ not natively supported — repack as ZIP
+    const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE'});
+    return {blob, name:stem+'.zip'};
   }
-  // Extract listing as text
   if(de==='txt'){
     const names=Object.keys(zip.files).join('\n');
-    return new Blob([names],{type:'text/plain'});
+    return {blob:new Blob([names],{type:'text/plain'}), name:stem+'.txt'};
   }
-  throw new Error(`Archive → .${de} : utilisez un outil dédié pour TAR/GZ`);
+  throw new Error(`Archive → .${de} non supporté`);
 }
 
 // ── 12. Subtitles ────────────────────────────────────────────
 async function convSubtitle(file,se,de){
+  const stem=file.name.replace(/\.[^.]+$/,'');
   const text=await readText(file);
-  if(se==='srt'&&de==='vtt')return new Blob(['WEBVTT\n\n'+text.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g,'$1.$2')],{type:'text/vtt'});
-  if(se==='vtt'&&de==='srt')return new Blob([text.replace(/WEBVTT\n\n/,'').replace(/(\d{2}:\d{2}:\d{2})\.(\d{3})/g,'$1,$2')],{type:'text/plain'});
-  if(de==='txt'){const plain=text.replace(/^\d+$/gm,'').replace(/\d{2}:\d{2}:\d{2}[,.]\d{3} --> .+/gm,'').replace(/WEBVTT\n?/,'').replace(/\n{3,}/g,'\n\n').trim();return new Blob([plain],{type:'text/plain'});}
+  if(se==='srt'&&de==='vtt')return {blob:new Blob(['WEBVTT\n\n'+text.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g,'$1.$2')],{type:'text/vtt'}), name:stem+'.vtt'};
+  if(se==='vtt'&&de==='srt')return {blob:new Blob([text.replace(/WEBVTT\n\n/,'').replace(/(\d{2}:\d{2}:\d{2})\.(\d{3})/g,'$1,$2')],{type:'text/plain'}), name:stem+'.srt'};
+  if(de==='txt'){const plain=text.replace(/^\d+$/gm,'').replace(/\d{2}:\d{2}:\d{2}[,.]\d{3} --> .+/gm,'').replace(/WEBVTT\n?/,'').replace(/\n{3,}/g,'\n\n').trim();return {blob:new Blob([plain],{type:'text/plain'}), name:stem+'.txt'};}
   throw new Error(`Sous-titre → .${de} non supporté`);
 }
 
-// ── 13. Config files (INI/ENV/CFG → JSON/TXT) ───────────────
+// ── 13. Config files (INI/ENV/CFG → JSON/TXT/YAML) ──────────
 async function convConfig(file,de){
+  const stem=file.name.replace(/\.[^.]+$/,'');
   const text=await readText(file);
   const obj={};text.split('\n').forEach(l=>{l=l.trim();if(!l||l.startsWith('#')||l.startsWith(';'))return;const eq=l.indexOf('=');if(eq>0)obj[l.slice(0,eq).trim()]=l.slice(eq+1).trim();});
-  if(de==='json')return new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});
-  if(de==='yaml')return new Blob([jsonToYaml(obj).trim()],{type:'text/yaml'});
-  if(de==='txt')return new Blob([text],{type:'text/plain'});
+  if(de==='json')return {blob:new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}), name:stem+'.json'};
+  if(de==='yaml')return {blob:new Blob([jsonToYaml(obj).trim()],{type:'text/yaml'}), name:stem+'.yaml'};
+  if(de==='txt')return {blob:new Blob([text],{type:'text/plain'}), name:stem+'.txt'};
   throw new Error(`Config → .${de} non supporté`);
 }
 
@@ -801,7 +803,7 @@ async function convertFile(file,dstExt,cb=null){
 
   // IMAGE → IMAGE / PDF / SVG
   if(imgExts.includes(se)){
-    if(de==='svg'){blob=await imgToSvg(file);return{blob,name:outName};}
+    if(de==='svg'){return await imgToSvg(file);}
     if(imgExts.includes(de)||de==='pdf'){blob=await convImage(file,de);return{blob,name:outName};}
   }
   // SVG → raster
@@ -822,28 +824,28 @@ async function convertFile(file,dstExt,cb=null){
   }
 
   // DOCX / DOC
-  if(['docx','doc'].includes(se)){blob=await convDocx(file,de);return{blob,name:outName};}
+  if(['docx','doc'].includes(se)){return await convDocx(file,de);}
 
   // XLSX / XLS
-  if(['xlsx','xls'].includes(se)){blob=await convXlsx(file,de);return{blob,name:outName};}
+  if(['xlsx','xls'].includes(se)){return await convXlsx(file,de);}
 
   // CSV
-  if(se==='csv'){blob=await convCsv(file,de);return{blob,name:outName};}
+  if(se==='csv'){return await convCsv(file,de);}
 
   // JSON
-  if(se==='json'){blob=await convJson(file,de);return{blob,name:outName};}
+  if(se==='json'){return await convJson(file,de);}
 
   // XML
-  if(se==='xml'){blob=await convXml(file,de);return{blob,name:outName};}
+  if(se==='xml'){return await convXml(file,de);}
 
   // ARCHIVES
-  if(['zip','tar','gz'].includes(se)){blob=await convArchive(file,de);return{blob,name:outName};}
+  if(['zip','tar','gz'].includes(se)){return await convArchive(file,de);}
 
   // SUBTITLES
-  if(['srt','vtt'].includes(se)){blob=await convSubtitle(file,se,de);return{blob,name:outName};}
+  if(['srt','vtt'].includes(se)){return await convSubtitle(file,se,de);}
 
   // CONFIG
-  if(['ini','env','cfg'].includes(se)){blob=await convConfig(file,de);return{blob,name:outName};}
+  if(['ini','env','cfg'].includes(se)){return await convConfig(file,de);}
 
   // TEXT / CODE → html / md / pdf / txt
   const text=await readText(file);
