@@ -86,7 +86,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Syne',
 .logo-sub{font-size:9px;color:var(--muted);font-family:'JetBrains Mono',monospace;letter-spacing:.1em}
 #glow{height:2px;flex-shrink:0;background:linear-gradient(90deg,transparent,var(--accent),var(--a2),var(--a3),transparent);background-size:300% 100%;animation:gs 3s linear infinite}
 @keyframes gs{0%{background-position:200% 0}100%{background-position:-200% 0}}
-.lang-wrap{margin-left:auto;display:flex;align-items:center;gap:8px}
+.topbar-btns{display:flex;align-items:center;gap:8px;margin-left:auto}
+.tb-btn{display:flex;align-items:center;gap:6px;padding:6px 13px;border-radius:6px;border:none;
+  font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;white-space:nowrap}
+.tb-dl{background:linear-gradient(135deg,var(--a2),#5b21b6);color:#fff}
+.tb-dl:hover{background:linear-gradient(135deg,#8b5cf6,var(--a2));transform:translateY(-1px);box-shadow:0 4px 14px rgba(124,58,237,.4)}
+.tb-yt{background:linear-gradient(135deg,#ff0000,#cc0000);color:#fff}
+.tb-yt:hover{background:linear-gradient(135deg,#ff3333,#ff0000);transform:translateY(-1px);box-shadow:0 4px 14px rgba(255,0,0,.4)}
+.lang-wrap{display:flex;align-items:center;gap:8px}
 .lang-lbl{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--accent);letter-spacing:.1em}
 select{background:var(--panel);border:1px solid var(--border2);color:var(--text);font-family:'Syne',sans-serif;font-size:12px;padding:4px 10px;border-radius:var(--r);cursor:pointer;outline:none}
 select:focus{border-color:var(--accent)}
@@ -168,6 +175,40 @@ select:focus{border-color:var(--accent)}
 
 /* STATUS BAR */
 #statusbar{height:28px;background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 14px;flex-shrink:0;gap:12px}
+/* YouTube Modal */
+#yt-modal{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:600;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px)}
+#yt-modal.hidden{display:none}
+#yt-box{background:var(--panel);border:1px solid var(--border2);border-radius:14px;padding:28px 32px;width:520px;max-width:95vw;font-family:'JetBrains Mono',monospace}
+#yt-box h2{color:var(--accent);font-size:15px;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+#yt-box p{color:var(--muted);font-size:10px;margin-bottom:18px;line-height:1.6}
+.yt-input{width:100%;background:var(--surface);border:1px solid var(--border2);color:var(--text);
+  font-family:'JetBrains Mono',monospace;font-size:12px;padding:10px 13px;border-radius:8px;
+  outline:none;transition:border-color .2s;margin-bottom:12px}
+.yt-input:focus{border-color:var(--accent)}
+.yt-fmt{display:flex;gap:8px;margin-bottom:16px}
+.yt-fmt-btn{flex:1;padding:9px;border-radius:7px;border:2px solid var(--border2);background:var(--surface);
+  color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s}
+.yt-fmt-btn.act{border-color:var(--accent);color:var(--accent);background:rgba(0,212,255,.08)}
+.yt-fmt-btn.act-red{border-color:#ff0000;color:#ff4444;background:rgba(255,0,0,.08)}
+.yt-actions{display:flex;gap:10px}
+.yt-go{flex:1;background:var(--accent);color:#000;border:none;border-radius:8px;padding:11px;
+  font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s}
+.yt-go:hover{background:var(--a3)}
+.yt-go.red{background:#ff0000;color:#fff}
+.yt-go.red:hover{background:#cc0000}
+.yt-close{background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:8px;
+  padding:11px 16px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:12px}
+.yt-close:hover{color:var(--text)}
+#yt-status{margin-top:12px;font-size:10px;color:var(--muted);min-height:16px;text-align:center}
+#yt-prog-wrap{background:var(--surface);border-radius:3px;height:4px;overflow:hidden;margin-top:8px;display:none}
+#yt-prog-fill{height:100%;background:linear-gradient(90deg,#ff0000,#ff6b6b);width:0%;transition:width .3s}
+.yt-services{margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+.yt-services p{color:var(--muted);font-size:10px;margin-bottom:8px}
+.yt-svc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.yt-svc{background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:8px 6px;
+  text-align:center;cursor:pointer;transition:all .15s;text-decoration:none;color:var(--text);font-size:10px}
+.yt-svc:hover{border-color:var(--accent);color:var(--accent)}
+.yt-svc .svc-icon{font-size:18px;display:block;margin-bottom:3px}
 #status-txt{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);flex:1}
 #status-right{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)}
 
@@ -208,6 +249,14 @@ select:focus{border-color:var(--accent)}
         <div># ZENKARI</div>
         <div class="logo-sub">CONVERTER v3.1 — WEB EDITION</div>
       </div>
+    </div>
+    <div class="topbar-btns">
+      <button class="tb-btn tb-dl" onclick="window.open('https://github.com/fonnjee10','_blank')">
+        ⬇ Version Windows .EXE
+      </button>
+      <button class="tb-btn tb-yt" onclick="openYT()">
+        ▶ YouTube → MP3 / MP4
+      </button>
     </div>
     <div class="lang-wrap">
       <span class="lang-lbl" id="lbl-lang">LANGUE</span>
@@ -297,6 +346,56 @@ select:focus{border-color:var(--accent)}
   </div>
 </div>
 <div id="toasts"></div>
+
+<!-- YOUTUBE CONVERTER MODAL -->
+<div id="yt-modal" class="hidden">
+  <div id="yt-box">
+    <h2>▶ <span style="color:#ff0000">YouTube</span> Converter</h2>
+    <p>Colle un lien YouTube et choisis le format.<br>
+    Le navigateur ne peut pas télécharger directement depuis YouTube (restrictions légales).<br>
+    Utilise un des services ci-dessous ou la version Python pour le faire localement.</p>
+
+    <input type="url" class="yt-input" id="yt-url" placeholder="https://www.youtube.com/watch?v=...">
+
+    <div class="yt-fmt">
+      <button class="yt-fmt-btn act" id="yt-mp3-btn" onclick="setYTFmt('mp3')">🎵 MP3 Audio</button>
+      <button class="yt-fmt-btn" id="yt-mp4-btn" onclick="setYTFmt('mp4')">🎬 MP4 Vidéo</button>
+      <button class="yt-fmt-btn" id="yt-wav-btn" onclick="setYTFmt('wav')">🔊 WAV Audio</button>
+    </div>
+
+    <div class="yt-actions">
+      <button class="yt-go" id="yt-go-btn" onclick="ytConvert()">⚡ Convertir & Télécharger</button>
+      <button class="yt-close" onclick="closeYT()">✕</button>
+    </div>
+
+    <div id="yt-prog-wrap"><div id="yt-prog-fill"></div></div>
+    <div id="yt-status"></div>
+
+    <div class="yt-services">
+      <p>🌐 Services de téléchargement YouTube (ouvrent dans un nouvel onglet) :</p>
+      <div class="yt-svc-grid">
+        <a class="yt-svc" id="svc-y2mate" href="#" target="_blank" onclick="openService('y2mate')">
+          <span class="svc-icon">⚡</span>Y2Mate
+        </a>
+        <a class="yt-svc" id="svc-cobalt" href="#" target="_blank" onclick="openService('cobalt')">
+          <span class="svc-icon">💎</span>Cobalt
+        </a>
+        <a class="yt-svc" id="svc-yt1s" href="#" target="_blank" onclick="openService('yt1s')">
+          <span class="svc-icon">🔽</span>YT1S
+        </a>
+        <a class="yt-svc" id="svc-savefrom" href="#" target="_blank" onclick="openService('savefrom')">
+          <span class="svc-icon">💾</span>SaveFrom
+        </a>
+        <a class="yt-svc" id="svc-loader" href="#" target="_blank" onclick="openService('loader')">
+          <span class="svc-icon">📥</span>Loader.to
+        </a>
+        <a class="yt-svc" id="svc-9xbuddy" href="#" target="_blank" onclick="openService('9xbuddy')">
+          <span class="svc-icon">🎯</span>9xBuddy
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
 'use strict';
@@ -1033,6 +1132,166 @@ async function init(){
   if(typeof JSZip==='undefined')log('⚠ JSZip non chargé — ZIP désactivé','warn');
 }
 init();
+
+/* ═══════════════════════════════════════════════════
+   YOUTUBE CONVERTER
+═══════════════════════════════════════════════════ */
+let ytFmt = 'mp3';
+
+function openYT() {
+  document.getElementById('yt-modal').classList.remove('hidden');
+  document.getElementById('yt-url').focus();
+}
+
+function closeYT() {
+  document.getElementById('yt-modal').classList.add('hidden');
+  document.getElementById('yt-status').textContent = '';
+  document.getElementById('yt-prog-wrap').style.display = 'none';
+  document.getElementById('yt-prog-fill').style.width = '0%';
+}
+
+function setYTFmt(fmt) {
+  ytFmt = fmt;
+  document.querySelectorAll('.yt-fmt-btn').forEach(b => {
+    b.classList.remove('act','act-red');
+  });
+  const btn = document.getElementById(`yt-${fmt}-btn`);
+  if(btn) btn.classList.add(fmt==='mp4'?'act-red':'act');
+  // Update go button color
+  const go = document.getElementById('yt-go-btn');
+  go.className = 'yt-go' + (fmt==='mp4'?' red':'');
+}
+
+function setYTStatus(msg, color='var(--muted)') {
+  const el = document.getElementById('yt-status');
+  el.style.color = color;
+  el.textContent = msg;
+}
+
+function setYTProg(pct) {
+  const wrap = document.getElementById('yt-prog-wrap');
+  const fill = document.getElementById('yt-prog-fill');
+  wrap.style.display = pct > 0 ? 'block' : 'none';
+  fill.style.width = pct + '%';
+}
+
+// Build service URLs with the YouTube URL embedded
+const YT_SERVICES = {
+  y2mate:   url => `https://www.y2mate.com/youtube/${encodeURIComponent(url)}`,
+  cobalt:   url => `https://cobalt.tools/`,
+  yt1s:     url => `https://yt1s.io/youtube-to-mp3?q=${encodeURIComponent(url)}`,
+  savefrom: url => `https://savefrom.net/#url=${encodeURIComponent(url)}`,
+  loader:   url => `https://loader.to/api/button/?url=${encodeURIComponent(url)}&f=${ytFmt}`,
+  '9xbuddy':url => `https://9xbuddy.xyz/process?url=${encodeURIComponent(url)}`,
+};
+
+function openService(svc) {
+  const url = document.getElementById('yt-url').value.trim();
+  const builder = YT_SERVICES[svc];
+  if (!builder) return false;
+  if (!url || !url.includes('youtube')) {
+    setYTStatus('⚠ Colle d'abord un lien YouTube', 'var(--warn)');
+    return false;
+  }
+  window.open(builder(url), '_blank');
+  setYTStatus(`✓ Ouvert dans ${svc} — choisis le format ${ytFmt.toUpperCase()}`, 'var(--a3)');
+  return false;
+}
+
+async function ytConvert() {
+  const url = document.getElementById('yt-url').value.trim();
+  if (!url) { setYTStatus('⚠ Entre un lien YouTube', 'var(--warn)'); return; }
+  if (!url.includes('youtube.com') && !url.includes('youtu.be')) {
+    setYTStatus('⚠ Lien YouTube invalide', 'var(--err)'); return;
+  }
+
+  setYTStatus('Tentative via API cobalt.tools…', 'var(--accent)');
+  setYTProg(10);
+
+  try {
+    // Try cobalt.tools API (open-source, no key needed)
+    const apiUrl = 'https://api.cobalt.tools/api/json';
+    const body = {
+      url: url,
+      vCodec: 'h264',
+      vQuality: '720',
+      aFormat: ytFmt === 'mp4' ? 'mp3' : ytFmt,
+      isAudioOnly: ytFmt !== 'mp4',
+      isNoTTWatermark: true,
+      dubLang: false,
+    };
+
+    setYTProg(20);
+    const resp = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: JSON.stringify(body),
+    });
+
+    setYTProg(40);
+    const data = await resp.json();
+
+    if (data.status === 'stream' || data.status === 'redirect') {
+      const dlUrl = data.url;
+      setYTStatus('⬇ Téléchargement en cours…', 'var(--a3)');
+      setYTProg(70);
+      // Download the stream
+      const fileResp = await fetch(dlUrl);
+      setYTProg(85);
+      const blob = await fileResp.blob();
+      setYTProg(98);
+      // Get filename from headers or generate one
+      const cd = fileResp.headers.get('content-disposition');
+      let filename = `youtube_${Date.now()}.${ytFmt}`;
+      if (cd) {
+        const m = cd.match(/filename[^;=
+]*=((['"]).*?|[^;
+]*)/);
+        if (m) filename = m[1].replace(/['"]/g,'');
+      }
+      saveAs(blob, filename);
+      setYTProg(100);
+      setYTStatus(`✓ Téléchargé : ${filename}`, 'var(--a3)');
+      toast(`✓ YouTube → ${filename}`, 'ok');
+      setTimeout(() => setYTProg(0), 3000);
+
+    } else if (data.status === 'picker') {
+      // Multiple quality options
+      setYTStatus('Plusieurs qualités disponibles — ouverture cobalt.tools', 'var(--warn)');
+      window.open('https://cobalt.tools/', '_blank');
+      setYTProg(0);
+
+    } else if (data.status === 'error') {
+      throw new Error(data.text || 'Erreur cobalt API');
+
+    } else {
+      throw new Error('Réponse inattendue: ' + JSON.stringify(data).slice(0,100));
+    }
+
+  } catch(e) {
+    setYTProg(0);
+    // Cobalt failed — show service buttons as fallback
+    setYTStatus(`API indisponible — utilise un service ci-dessous`, 'var(--warn)');
+    // Auto-populate service links with the URL
+    const ytUrl = url;
+    document.querySelectorAll('.yt-svc').forEach(el => {
+      const svc = el.id.replace('svc-','');
+      const builder = YT_SERVICES[svc];
+      if(builder) { el.href = builder(ytUrl); el.onclick = null; }
+    });
+    log(`YouTube API: ${e.message} — utilise les services alternatifs`, 'warn');
+  }
+}
+
+// Close modal on background click
+document.getElementById('yt-modal').addEventListener('click', function(e) {
+  if(e.target === this) closeYT();
+});
+
+// Enter key in URL input
+document.getElementById('yt-url').addEventListener('keydown', e => {
+  if(e.key === 'Enter') ytConvert();
+});
 
 // Keyboard shortcuts
 document.addEventListener('keydown',e=>{
